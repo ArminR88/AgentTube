@@ -11,52 +11,69 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from helpers.shared_helper import setup_logging  # noqa: E402
-from helpers.transcript_summarization_helper import TranscriptSummaryResult, summarize_transcript  # noqa: E402
+from helpers.transcript_summarization_helper import (
+    build_summary_transcript_records,
+    summarize_transcript_records,
+    write_summary_transcript_records,
+)  # noqa: E402
 
 
-def run_stage(transcript: str | None, metadata: dict[str, Any] | None = None) -> TranscriptSummaryResult:
+def run_stage(
+    records: list[dict[str, Any]],
+    transcripts_dir: str = "transcripts",
+    api_key: str | None = None,
+    summary_limit: int | None = None,
+    summary_output_dir: str | None = None,
+) -> list[dict[str, Any]]:
     """
-    Summarize one transcript.
+    Summarize transcript records.
 
     Arguments:
-        transcript (str | None): Transcript text to summarize.
-        metadata (dict[str, Any] | None): Optional metadata dictionary.
+        records (list[dict[str, Any]]): Transcript detection records.
+        transcripts_dir (str): Directory containing transcript files.
+        api_key (str | None): DeepSeek API key.
+        summary_limit (int | None): Optional limit on the number of summarized records.
+        summary_output_dir (str | None): Optional directory for per-transcript summary files.
 
     Returns:
-        TranscriptSummaryResult: Structured summarization result.
+        list[dict[str, Any]]: Records merged with summary results.
 
     Example:
-        >>> run_stage("A short transcript.")
-        TranscriptSummaryResult(...)
+        >>> run_stage([])
+        []
     """
-    summary_result = summarize_transcript(transcript, metadata=metadata)
+    summarized_records = summarize_transcript_records(
+        records,
+        transcripts_dir,
+        api_key=api_key,
+        summary_limit=summary_limit,
+    )
 
-    return summary_result
+    if summary_output_dir is not None:
+        summary_transcript_records = build_summary_transcript_records(summarized_records)
+        write_summary_transcript_records(summary_transcript_records, summary_output_dir)
+
+    return summarized_records
 
 
-def _load_metadata(metadata_file: str | None) -> dict[str, Any] | None:
+def _load_records(records_file: str) -> list[dict[str, Any]]:
     """
-    Load optional metadata.
+    Load transcript records from JSON.
 
     Arguments:
-        metadata_file (str | None): Path to a JSON metadata file.
+        records_file (str): Path to a JSON file with transcript records.
 
     Returns:
-        dict[str, Any] | None: Loaded metadata dictionary or None.
+        list[dict[str, Any]]: Transcript detection records.
 
     Example:
-        >>> _load_metadata(None) is None
+        >>> isinstance(_load_records, object)
         True
     """
-    if not metadata_file:
-        metadata = None
+    with open(records_file, "r", encoding="utf-8") as file:
+        records = json.load(file)
 
-        return metadata
-
-    with open(metadata_file, "r", encoding="utf-8") as file:
-        metadata = json.load(file)
-
-    return metadata
+    return records
 
 
 def main() -> None:
@@ -70,34 +87,42 @@ def main() -> None:
         None
 
     Example:
-        $ python stage/transcript_summarization_stage.py transcript.txt --json
+        $ python stage/transcript_summarization_stage.py records.json --transcripts-dir output_agenttube/2026-07-31/transcripts
     """
     import argparse
 
     parser = argparse.ArgumentParser(description="Run the transcript summarization stage")
-    parser.add_argument("transcript_file", help="Path to a transcript text file")
-    parser.add_argument("--metadata-file", help="Optional JSON file with transcript metadata")
-    parser.add_argument("--json", action="store_true", help="Print the summary result as JSON")
+    parser.add_argument("records_file", help="Path to a JSON file with transcript records")
+    parser.add_argument("--transcripts-dir", default="transcripts", help="Directory containing transcript files")
+    parser.add_argument("--summary-limit", type=int, help="Optional limit on the number of records to summarize")
+    parser.add_argument(
+        "--summary-output-dir",
+        default="transcript_summary",
+        help="Directory for per-transcript summary files",
+    )
+    parser.add_argument("--json", action="store_true", help="Print the summarized records as JSON")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
     setup_logging(args.verbose)
 
-    with open(args.transcript_file, "r", encoding="utf-8") as file:
-        transcript = file.read()
-
-    metadata = _load_metadata(args.metadata_file)
-    summary_result = run_stage(transcript, metadata=metadata)
+    records = _load_records(args.records_file)
+    summarized_records = run_stage(
+        records,
+        transcripts_dir=args.transcripts_dir,
+        summary_limit=args.summary_limit,
+        summary_output_dir=args.summary_output_dir,
+    )
 
     if args.json:
-        print(summary_result.model_dump_json(indent=2))
+        summary_transcript_records = build_summary_transcript_records(summarized_records)
+        print(json.dumps(summary_transcript_records, indent=2, default=str))
         return
 
-    if not summary_result.success:
-        print(f"Summary failed: {summary_result.error}")
-        return
-
-    print(summary_result.summary)
+    for index, record in enumerate(summarized_records, 1):
+        summary_result = record.get("summary_result", {})
+        status = "yes" if summary_result.get("success") else "no"
+        print(f"{index}. {record['channel_name']} | {record['title']} | summary: {status}")
 
 
 if __name__ == "__main__":

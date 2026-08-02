@@ -21,13 +21,17 @@ VIDEO_DURATION_PATTERN = re.compile(
 )
 
 CHANNEL_IDS = [
-    "UCOxLhz6B_elvLflntSEfnzA",
-    "UCDkEYb-TXJVWLvOokshtlsw",
+    "UCOxLhz6B_elvLflntSEfnzA",      # Danny_Haiphong
+    "UCDkEYb-TXJVWLvOokshtlsw",      # Judge_Napolitano
+    "UCZFCDIHTe9HGxtIuVDpBz7g",      # Glenn Diesen
+    "UCWDN5zr5ttctoIAhZwW6tcQ",      # Daniel Davis / Deep Dive
 ]
 
 CHANNEL_NAMES = {
     "UCOxLhz6B_elvLflntSEfnzA": "Danny_Haiphong",
     "UCDkEYb-TXJVWLvOokshtlsw": "Judge_Napolitano",
+    "UCZFCDIHTe9HGxtIuVDpBz7g": "Glenn_Diesen",
+    "UCWDN5zr5ttctoIAhZwW6tcQ": "Daniel_Davis",
 }
 
 

@@ -39,7 +39,7 @@ def build_output_directories(root_name: str = "output_agenttube") -> dict[str, P
 
     Example:
         >>> directories = build_output_directories()
-        >>> "final_output" in directories
+        >>> "transcript_summary" in directories
         True
     """
     run_date = get_run_date()
@@ -48,9 +48,10 @@ def build_output_directories(root_name: str = "output_agenttube") -> dict[str, P
     directories = {
         "run_root": run_root,
         "transcripts": run_root / "transcripts",
+        "transcript_summary": run_root / "transcript_summary",
+        "fact_checking": run_root / "fact_checking",
         "pipeline_summary": run_root / "pipeline_summary",
         "verification": run_root / "verification",
-        "final_output": run_root / "final_output",
     }
 
     for directory in directories.values():
@@ -120,14 +121,6 @@ def write_failure_artifacts(output_dirs: dict[str, Path], error_message: str) ->
             },
         },
     }
-    final_results = {
-        "run_date": output_dirs["run_root"].name,
-        "generated_at": datetime.now().isoformat(),
-        "records": [],
-        "transcript_records": [],
-        "download_stats": None,
-        "error": error_message,
-    }
     verification_summary = {
         "passed": False,
         "generated_at": datetime.now().isoformat(),
@@ -135,13 +128,11 @@ def write_failure_artifacts(output_dirs: dict[str, Path], error_message: str) ->
     }
 
     pipeline_summary_path = write_json(output_dirs["pipeline_summary"] / "pipeline_summary.json", pipeline_summary)
-    final_results_path = write_json(output_dirs["final_output"] / "final_results.json", final_results)
     verification_json_path = write_json(output_dirs["verification"] / "verification.json", verification_summary)
     verification_log_path = write_text(output_dirs["verification"] / "verification.log", f"Passed: no\n{error_message}\n")
 
     artifact_paths = {
         "pipeline_summary": pipeline_summary_path,
-        "final_results": final_results_path,
         "verification_json": verification_json_path,
         "verification_log": verification_log_path,
     }
