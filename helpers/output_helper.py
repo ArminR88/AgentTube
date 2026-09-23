@@ -138,3 +138,36 @@ def write_failure_artifacts(output_dirs: dict[str, Path], error_message: str) ->
     }
 
     return artifact_paths
+
+# Add to output_helper.py at the end
+
+def build_claims_output_directories(root_name: str = "output_agenttube") -> dict[str, Path]:
+    """
+    Build output directories specifically for Stages 5-7.
+
+    Arguments:
+        root_name (str): Top-level output folder name.
+
+    Returns:
+        dict[str, Path]: Output directories for claims, fact-checked claims, and news scripts.
+
+    Example:
+        >>> dirs = build_claims_output_directories()
+        >>> "claims" in dirs
+        True
+    """
+    from helpers.output_helper import get_run_date
+
+    run_date = get_run_date()
+    run_root = Path(root_name) / run_date
+
+    directories = {
+        "claims": run_root / "claims",
+        "fact_checked_claims": run_root / "fact_checked_claims",
+        "news_script": run_root / "news_script",
+    }
+
+    for directory in directories.values():
+        directory.mkdir(parents=True, exist_ok=True)
+
+    return directories

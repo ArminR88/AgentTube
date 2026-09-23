@@ -65,7 +65,161 @@ FACT_CHECK_OBVIOUS_OPINION_HINTS = (
     "irrational",
 )
 
+# Add to transcript_fact_checking_helper.py after imports and before existing code
 
+def fact_check_claims(
+    claims_data: dict[str, Any],
+    api_key: str,
+    search_api_key: str | None = None,
+    search_provider: str | None = None,
+    model_name: str = FACT_CHECK_MODEL,
+    temperature: float = FACT_CHECK_TEMPERATURE,
+    max_tokens: int = FACT_CHECK_MAX_TOKENS,
+    max_retries: int = FACT_CHECK_MAX_RETRIES,
+    backoff_seconds: int = FACT_CHECK_BACKOFF_SECONDS,
+) -> dict[str, Any]:
+    """
+    Fact-check a list of unique claims (not per-video bullets).
+
+    Arguments:
+        claims_data (dict[str, Any]): Claims payload with 'claims' list.
+        api_key (str): DeepSeek API key for closed-book mode.
+        search_api_key (str | None): Optional API key for web search.
+        search_provider (str | None): Reserved compatibility argument.
+        model_name (str): Fact-check model name.
+        temperature (float): Sampling temperature.
+        max_tokens (int): Maximum output tokens.
+        max_retries (int): Maximum retry count.
+        backoff_seconds (int): Base retry delay.
+
+    Returns:
+        dict[str, Any]: Claims with fact-check verdicts added.
+
+    Example:
+        >>> claims_data = {"claims": [{"claim_id": 1, "text": "Test claim", "source_videos": ["a"]}]}
+        >>> result = fact_check_claims(claims_data, "key")
+        >>> result["claims"][0]["validation_status"] in ["true", "false", "unverified"]
+        True
+    """
+    claims = claims_data.get("claims", [])
+    if not claims:
+        return {"claims": [], "metadata": claims_data.get("metadata", {})}
+
+    # Convert claims to a format the existing fact-checker understands
+    # Each claim becomes a "record" with a single bullet
+    fact_check_records = []
+    claim_map = {}
+
+    for claim in claims:
+        claim_id = claim.get("claim_id", 0)
+        claim_text = claim.get("text", "")
+
+        # Create a pseudo-record for each claim
+        record = {
+            "video_id": f"claim_{claim_id}",
+            "channel_name": "Claims",
+            "title": f"Claim {claim_id}",
+            "bullets": [
+                {
+                    "bullet_id": claim_id,
+                    "text": claim_text,
+                    "is_opinion": False,
+                }
+            ],
+        }
+        fact_check_records.append(record)
+        claim_map[claim_id] = claim
+
+    # Use existing fact-checker on the pseudo-records
+    checked_records = fact_check_transcript_records(
+        fact_check_records,
+        api_key=api_key,
+        search_api_key=search_api_key,
+        search_provider=search_provider,
+        model_name=model_name,
+        temperature=temperature,
+        max_tokens=max_tokens,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+    )
+
+    # Merge results back into claims
+    for checked_record in checked_records:
+        claim_id = int(checked_record.get("video_id", "claim_0").split("_")[1])
+        fact_checks = checked_record.get("fact_checks", [])
+
+        if fact_checks:
+            result = fact_checks[0]
+            claim = claim_map.get(claim_id, {})
+            claim["validation_status"] = result.get("validation_status", "unverified")
+            claim["note"] = result.get("note", "")
+            claim["sources"] = result.get("sources", [])
+            claim["confidence"] = result.get("confidence", 0.0)
+
+    # Calculate total cost and tokens
+    total_tokens = sum(r.get("tokens_used", 0) for r in checked_records)
+    total_cost = sum(r.get("cost", 0.0) for r in checked_records)
+
+    result_payload = {
+        "claims": claims,
+        "metadata": {
+            **claims_data.get("metadata", {}),
+            "fact_check_tokens": total_tokens,
+            "fact_check_cost": total_cost,
+            "fact_check_count": len(claims),
+        },
+    }
+
+    return result_payload
+
+
+def write_fact_checked_claims(
+    claims_data: dict[str, Any],
+    output_dir: str | Path,
+) -> Path:
+    """
+    Write fact-checked claims to JSON file.
+
+    Arguments:
+        claims_data (dict[str, Any]): Claims with verdicts.
+        output_dir (str | Path): Output directory.
+
+    Returns:
+        Path: Path of written file.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    file_path = output_path / "claims_fact_checked.json"
+    write_json(file_path, claims_data)
+
+    return file_path
+
+
+def load_fact_checked_claims(claims_file: str | Path) -> dict[str, Any]:
+    """
+    Load fact-checked claims from JSON file.
+
+    Arguments:
+        claims_file (str | Path): Path to claims_fact_checked.json.
+
+    Returns:
+        dict[str, Any]: Claims with verdicts.
+
+    Example:
+        >>> claims = load_fact_checked_claims("output_agenttube/2026-08-04/fact_checked_claims/claims_fact_checked.json")
+        >>> "claims" in claims
+        True
+    """
+    claims_path = Path(claims_file)
+
+    if not claims_path.exists():
+        raise FileNotFoundError(f"Fact-checked claims file not found: {claims_path}")
+
+    with open(claims_path, "r", encoding="utf-8") as file:
+        payload = json.load(file)
+
+    return payload
 class FactCheckBulletDraft(BaseModel):
     """Draft structure expected from the fact-check model."""
 

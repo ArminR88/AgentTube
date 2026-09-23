@@ -1,1 +1,0 @@
-python agenttube_pipeline.py --search-api-key "$DEEPSEEK_API_KEY"
