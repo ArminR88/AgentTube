@@ -1,4 +1,4 @@
-"""Stage runner for generating news scripts from fact-checked claims."""
+"""Stage runner for generating perspective digests from topics."""
 
 from pathlib import Path
 import sys
@@ -10,15 +10,15 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from helpers.shared_helper import setup_logging
 from helpers.news_script_generator_helper import (
-    generate_news_script,
-    load_fact_checked_claims,
-    write_news_script,
-    build_script_stats,
+    build_digest_stats,
+    generate_perspective_digest,
+    load_topics,
+    write_perspective_digest,
 )
 
 
 def run_stage(
-    claims_file: str | Path,
+    topics_file: str | Path,
     output_dir: str | Path,
     api_key: str | None = None,
     model: str = "deepseek-v4-flash",
@@ -29,11 +29,11 @@ def run_stage(
     backoff_seconds: int = 1,
 ) -> dict[str, Any]:
     """
-    Run the news script generation stage.
+    Run the perspective digest generation stage.
 
     Arguments:
-        claims_file (str | Path): Path to claims_fact_checked.json.
-        output_dir (str | Path): Directory to save script files.
+        topics_file (str | Path): Path to topics.json.
+        output_dir (str | Path): Directory to save digest files.
         api_key (str | None): DeepSeek API key.
         model (str): Primary model name.
         fallback_model (str): Backup model name.
@@ -43,38 +43,45 @@ def run_stage(
         backoff_seconds (int): Base retry delay.
 
     Returns:
-        dict[str, Any]: Stage results with script and stats.
+        dict[str, Any]: Stage results with digest and stats.
 
     Example:
-        >>> result = run_stage("fact_checked_claims/claims_fact_checked.json", "news_script")
-        >>> "script" in result
+        >>> result = run_stage("topics/topics.json", "news_script")
+        >>> "digest" in result
         True
     """
-    # Load fact-checked claims
+    # Load topics
     try:
-        claims_data = load_fact_checked_claims(claims_file)
+        topics_data = load_topics(topics_file)
     except FileNotFoundError as exc:
+        stats = build_digest_stats(0, 0, 0, 0, 0.0)
         return {
-            "script": "",
+            "digest": "",
             "word_count": 0,
             "tokens_used": 0,
             "cost": 0.0,
+            "text_output_path": "",
+            "json_output_path": "",
+            "stats": stats,
             "error": str(exc),
         }
 
-    claims = claims_data.get("claims", [])
-    if not claims:
+    if not topics_data.get("topics"):
+        stats = build_digest_stats(0, 0, 0, 0, 0.0)
         return {
-            "script": "No claims available to generate script.",
+            "digest": "No topics available to generate digest.",
             "word_count": 0,
             "tokens_used": 0,
             "cost": 0.0,
-            "error": "No claims found in input file",
+            "text_output_path": "",
+            "json_output_path": "",
+            "stats": stats,
+            "error": "No topics found in input file",
         }
 
-    # Generate script
-    script_text, tokens_used, cost = generate_news_script(
-        claims_data,
+    # Generate digest
+    digest_text, tokens_used, cost = generate_perspective_digest(
+        topics_data,
         api_key=api_key,
         model=model,
         fallback_model=fallback_model,
@@ -84,21 +91,28 @@ def run_stage(
         backoff_seconds=backoff_seconds,
     )
 
-    # Write script files
-    text_path, json_path = write_news_script(
-        script_text,
+    # Write digest files
+    text_path, json_path = write_perspective_digest(
+        digest_text,
         output_dir,
-        claims_data,
+        topics_data,
         tokens_used,
         cost,
     )
 
     # Build stats
-    word_count = len(script_text.split())
-    stats = build_script_stats(len(claims), word_count, tokens_used, cost)
+    topics = topics_data.get("topics", [])
+    topic_count = len(topics)
+    perspective_count = sum(
+        len(topic.get("perspectives", []))
+        for topic in topics
+        if isinstance(topic, dict)
+    )
+    word_count = len(digest_text.split())
+    stats = build_digest_stats(topic_count, perspective_count, word_count, tokens_used, cost)
 
     return {
-        "script": script_text,
+        "digest": digest_text,
         "word_count": word_count,
         "tokens_used": tokens_used,
         "cost": cost,
@@ -110,7 +124,7 @@ def run_stage(
 
 def main() -> None:
     """
-    CLI entry point for the news script generation stage.
+    CLI entry point for the perspective digest generation stage.
 
     Arguments:
         None
@@ -119,17 +133,17 @@ def main() -> None:
         None
 
     Example:
-        $ python stage/news_script_generator_stage.py --claims-file output_agenttube/2026-08-04/fact_checked_claims/claims_fact_checked.json --output-dir output_agenttube/2026-08-04/news_script
+        $ python stage/news_script_generator_stage.py --topics-file output_agenttube/2026-08-04/topics/topics.json --output-dir output_agenttube/2026-08-04/news_script
     """
     import argparse
     import json
     import os
 
-    parser = argparse.ArgumentParser(description="Run the news script generation stage")
+    parser = argparse.ArgumentParser(description="Run the perspective digest generation stage")
     parser.add_argument(
-        "--claims-file",
+        "--topics-file",
         required=True,
-        help="Path to claims_fact_checked.json",
+        help="Path to topics.json",
     )
     parser.add_argument(
         "--output-dir",
@@ -182,7 +196,7 @@ def main() -> None:
         raise SystemExit("DEEPSEEK_API_KEY is not set.")
 
     result = run_stage(
-        claims_file=args.claims_file,
+        topics_file=args.topics_file,
         output_dir=args.output_dir,
         api_key=args.api_key,
         model=args.model,

@@ -1,54 +1,29 @@
 """Thin AgentTube pipeline entrypoint."""
 
-import os
 import sys
-from pathlib import Path
 from typing import Any, cast
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from helpers.output_helper import build_claims_output_directories, get_run_date
 from stage.pipeline_stage import run_stage as run_pipeline_stage
-from stage.transcript_fact_checking_stage import run_stage as run_fact_check_stage
-
-
-def _resolve_fact_check_input_path(input_value: str) -> Path:
-    """
-    Resolve a fact-check input path.
-
-    Arguments:
-        input_value (str): User-provided input path.
-
-    Returns:
-        Path: Resolved file path.
-
-    Example:
-        >>> _resolve_fact_check_input_path("summary.json")
-        PosixPath('summary.json')
-    """
-    candidate_path = Path(input_value)
-    if candidate_path.is_file():
-        return candidate_path
-
-    if not candidate_path.is_absolute():
-        cwd_candidate = Path.cwd() / candidate_path
-        if cwd_candidate.is_file():
-            return cwd_candidate
-
-        summary_candidate = Path.cwd() / "output_agenttube" / get_run_date() / "transcript_summary" / candidate_path.name
-        if summary_candidate.is_file():
-            return summary_candidate
-
-        claims_candidate = Path.cwd() / "output_agenttube" / get_run_date() / "claims" / candidate_path.name
-        if claims_candidate.is_file():
-            return claims_candidate
-
-    return candidate_path
 
 
 def main() -> None:
+    """
+    Run the AgentTube pipeline CLI.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> True
+        True
+    """
     import argparse
     import json
 
@@ -59,76 +34,10 @@ def main() -> None:
     parser.add_argument("--no-transcript-detection", action="store_true", help="Skip the transcript detection stage")
     parser.add_argument("--no-download", action="store_true", help="Skip transcript download after transcript detection")
     parser.add_argument("--no-summary", action="store_true", help="Skip transcript summarization after transcript download")
-    parser.add_argument("--no-fact-check", action="store_true", help="Skip fact checking (both per-video and claim-based)")
-    parser.add_argument("--no-claims", action="store_true", help="Skip summary-of-summaries claims extraction")
-    parser.add_argument("--no-script", action="store_true", help="Skip news script generation")
-    parser.add_argument("--fact-check-only", action="store_true", help="Run only fact checking on an existing summary JSON file")
-    parser.add_argument("--fact-check-input", help="Path to a JSON file containing summary transcript records or claims")
-    parser.add_argument(
-        "--search-api-key",
-        default=os.environ.get("SEARCH_API_KEY") or os.environ.get("DEEPSEEK_API_KEY"),
-        help="Optional DeepSeek API key for web-assisted fact checking (defaults to SEARCH_API_KEY or DEEPSEEK_API_KEY from .env)",
-    )
-    parser.add_argument(
-        "--search-provider",
-        default="deepseek",
-        choices=("deepseek", "tavily", "google", "bing"),
-        help="Reserved compatibility argument for future search workflows",
-    )
+    parser.add_argument("--no-topics", action="store_true", help="Skip topic extraction")
+    parser.add_argument("--no-script", action="store_true", help="Skip perspective digest generation")
     parser.add_argument("--summary-limit", type=int, help="Limit the number of summarized records")
     args = parser.parse_args()
-
-    if args.fact_check_only:
-        if not args.fact_check_input:
-            raise SystemExit("--fact-check-input is required when --fact-check-only is set.")
-
-        import json as _json
-
-        fact_check_input_path = _resolve_fact_check_input_path(args.fact_check_input)
-        if not fact_check_input_path.exists():
-            raise SystemExit("Fact-check input file not found: " + args.fact_check_input)
-
-        with open(fact_check_input_path, "r", encoding="utf-8") as file:
-            input_data = _json.load(file)
-
-        if isinstance(input_data, dict) and "claims" in input_data:
-            from helpers.output_helper import build_claims_output_directories
-            from helpers.transcript_fact_checking_helper import fact_check_claims, write_fact_checked_claims
-
-            claims_dirs = build_claims_output_directories()
-            fact_checked_data = fact_check_claims(
-                input_data,
-                api_key=args.search_api_key or os.environ.get("DEEPSEEK_API_KEY"),
-                search_api_key=args.search_api_key,
-                search_provider=args.search_provider,
-            )
-            output_path = write_fact_checked_claims(fact_checked_data, str(claims_dirs["fact_checked_claims"]))
-
-            payload = {
-                "claims_input": input_data,
-                "fact_checked_claims": fact_checked_data,
-                "fact_check_only": True,
-                "output_path": str(output_path),
-            }
-        else:
-            fact_check_records = run_fact_check_stage(
-                input_data,
-                search_api_key=args.search_api_key,
-                search_provider=args.search_provider,
-            )
-
-            payload = {
-                "summary_records": input_data,
-                "fact_check_records": fact_check_records,
-                "fact_check_only": True,
-            }
-
-        if args.json:
-            print(_json.dumps(payload, indent=2, default=str))
-            return
-
-        print(f"Fact checks completed. Output: {payload.get('output_path', 'see console')}")
-        return
 
     try:
         payload = run_pipeline_stage(
@@ -137,14 +46,11 @@ def main() -> None:
             run_transcript_detection=not args.no_transcript_detection,
             run_download=not args.no_download,
             run_summary=not args.no_summary,
-            run_fact_check=not args.no_fact_check,
-            run_claims=not args.no_claims,
+            run_topics=not args.no_topics,
             run_script=not args.no_script,
-            search_api_key=args.search_api_key,
-            search_provider=args.search_provider,
             summary_limit=args.summary_limit,
         )
-    except SystemExit as exc:
+    except SystemExit:
         sys.exit(2)
 
     if args.json:
@@ -162,18 +68,15 @@ def main() -> None:
     if summary_transcript_records:
         print(f"Summaries: {len(summary_transcript_records)} record(s) processed")
 
-    fact_check_records = cast(list[dict[str, Any]], payload.get("fact_check_records") or [])
-    if fact_check_records:
-        print(f"Fact checks: {len(fact_check_records)} claim(s) processed")
+    topics_result = cast(dict[str, Any], payload.get("topics_result") or {})
+    if topics_result:
+        print(f"Topics extracted: {topics_result.get('topic_count', 0)}")
+        print(f"Perspectives: {topics_result.get('perspective_count', 0)}")
 
-    claims_result = cast(dict[str, Any], payload.get("claims_result") or {})
-    if claims_result:
-        print(f"Unique claims extracted: {claims_result.get('claim_count', 0)}")
-
-    script_result = cast(dict[str, Any], payload.get("script_result") or {})
-    if script_result:
-        print(f"News script generated: {script_result.get('word_count', 0)} words")
-        print(f"Script saved to: {script_result.get('text_output_path', '')}")
+    digest_result = cast(dict[str, Any], payload.get("digest_result") or {})
+    if digest_result:
+        print(f"Perspective digest generated: {digest_result.get('word_count', 0)} words")
+        print(f"Digest saved to: {digest_result.get('text_output_path', '')}")
 
 
 if __name__ == "__main__":

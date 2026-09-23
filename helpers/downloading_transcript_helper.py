@@ -4,6 +4,7 @@ import argparse
 import logging
 import re
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -49,9 +50,9 @@ def dev_reset_transcript_rate_limit_streak() -> None:
     DEV_TRANSCRIPT_RATE_LIMIT_STREAK = 0
 
 
-def dev_report_transcript_rate_limit(video_url: str, exc: RequestException) -> None:
+def dev_handle_transcript_rate_limit(video_url: str, exc: RequestException) -> None:
     """
-    Log transcript rate limits and stop the batch when they repeat too often.
+    Log transcript rate limits and apply cooldowns without aborting the batch.
 
     Arguments:
         video_url (str): YouTube video URL.
@@ -59,18 +60,16 @@ def dev_report_transcript_rate_limit(video_url: str, exc: RequestException) -> N
 
     Returns:
         None
+
+    Example:
+        >>> dev_handle_transcript_rate_limit("https://www.youtube.com/watch?v=dQw4w9WgXcQ", RequestException("429"))
+        >>> True
+        True
     """
     global DEV_TRANSCRIPT_RATE_LIMIT_STREAK
 
     DEV_TRANSCRIPT_RATE_LIMIT_STREAK += 1
     current_streak = DEV_TRANSCRIPT_RATE_LIMIT_STREAK
-
-    if current_streak >= DEV_TRANSCRIPT_RATE_LIMIT_LIMIT:
-        error_message = (
-            f"Dev transcript attempt limit reached after {current_streak} consecutive rate limits for {video_url}"
-        )
-        logging.error(error_message)
-        raise DevTooManyAttemptsError(error_message) from exc
 
     logging.warning(
         "Transcript fetch rate-limited for %s (%s/%s): %s",
@@ -79,6 +78,25 @@ def dev_report_transcript_rate_limit(video_url: str, exc: RequestException) -> N
         DEV_TRANSCRIPT_RATE_LIMIT_LIMIT,
         exc,
     )
+
+    if current_streak == 1:
+        cooldown_seconds = 0
+    elif current_streak == 2:
+        cooldown_seconds = 5
+    elif current_streak == 3:
+        cooldown_seconds = 15
+    else:
+        cooldown_seconds = 30
+
+    if current_streak >= DEV_TRANSCRIPT_RATE_LIMIT_LIMIT:
+        logging.warning(
+            "Dev transcript attempt limit reached at %s consecutive rate limits for %s; continuing batch but subsequent videos may also be rate-limited",
+            current_streak,
+            video_url,
+        )
+
+    if cooldown_seconds > 0:
+        time.sleep(cooldown_seconds)
 
 
 def sanitize_filename_part(text: str) -> str:
@@ -223,10 +241,8 @@ def download_transcript(video_url: str, output_dir: str = "transcripts", channel
     try:
         plain_text = fetch_plain_text(transcript_tracks[0]["url"])
         dev_reset_transcript_rate_limit_streak()
-    except DevTooManyAttemptsError:
-        raise
     except RequestException as exc:
-        dev_report_transcript_rate_limit(video_url, exc)
+        dev_handle_transcript_rate_limit(video_url, exc)
         failed = False
 
         return failed
@@ -282,10 +298,8 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
         try:
             plain_text = fetch_plain_text(transcript_urls[0])
             dev_reset_transcript_rate_limit_streak()
-        except DevTooManyAttemptsError:
-            raise
         except RequestException as exc:
-            dev_report_transcript_rate_limit(record["url"], exc)
+            dev_handle_transcript_rate_limit(record["url"], exc)
             failed = False
 
             return failed
@@ -326,6 +340,9 @@ def download_transcripts(video_urls: list[str], output_dir: str = "transcripts")
 
     Returns:
         dict[str, int]: Statistics with keys 'success', 'failed', and 'total'.
+
+    Notes:
+        Videos that fail due to rate limits are skipped and the batch continues.
     """
     stats = {
         "success": 0,
@@ -337,17 +354,17 @@ def download_transcripts(video_urls: list[str], output_dir: str = "transcripts")
 
     for index, url in enumerate(video_urls, 1):
         logging.info("Processing %s/%s: %s", index, stats["total"], url)
-        try:
-            if download_transcript(url, output_dir):
-                stats["success"] += 1
-            else:
-                stats["failed"] += 1
-        except DevTooManyAttemptsError as exc:
+        if download_transcript(url, output_dir):
+            stats["success"] += 1
+        else:
             stats["failed"] += 1
-            stats["dev_rate_limit_exhausted"] = True
-            stats["dev_rate_limit_error"] = str(exc)
-            logging.error("Stopping batch after dev transcript attempt limit: %s", exc)
-            break
+
+    if stats["failed"] > 0:
+        logging.warning(
+            "Download batch finished with %s failed / %s total videos",
+            stats["failed"],
+            stats["total"],
+        )
 
     result_stats = stats
 
@@ -367,6 +384,9 @@ def download_transcripts_from_records(
 
     Returns:
         dict[str, int]: Statistics with keys 'success', 'failed', and 'total'.
+
+    Notes:
+        Videos that fail due to rate limits are skipped and the batch continues.
     """
     stats = {
         "success": 0,
@@ -378,17 +398,17 @@ def download_transcripts_from_records(
 
     for index, record in enumerate(records, 1):
         logging.info("Processing %s/%s: %s", index, stats["total"], record["url"])
-        try:
-            if download_transcript_from_record(record, output_dir):
-                stats["success"] += 1
-            else:
-                stats["failed"] += 1
-        except DevTooManyAttemptsError as exc:
+        if download_transcript_from_record(record, output_dir):
+            stats["success"] += 1
+        else:
             stats["failed"] += 1
-            stats["dev_rate_limit_exhausted"] = True
-            stats["dev_rate_limit_error"] = str(exc)
-            logging.error("Stopping batch after dev transcript attempt limit: %s", exc)
-            break
+
+    if stats["failed"] > 0:
+        logging.warning(
+            "Download batch finished with %s failed / %s total videos",
+            stats["failed"],
+            stats["total"],
+        )
 
     result_stats = stats
 

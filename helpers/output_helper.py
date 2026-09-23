@@ -49,7 +49,6 @@ def build_output_directories(root_name: str = "output_agenttube") -> dict[str, P
         "run_root": run_root,
         "transcripts": run_root / "transcripts",
         "transcript_summary": run_root / "transcript_summary",
-        "fact_checking": run_root / "fact_checking",
         "pipeline_summary": run_root / "pipeline_summary",
         "verification": run_root / "verification",
     }
@@ -139,31 +138,26 @@ def write_failure_artifacts(output_dirs: dict[str, Path], error_message: str) ->
 
     return artifact_paths
 
-# Add to output_helper.py at the end
-
-def build_claims_output_directories(root_name: str = "output_agenttube") -> dict[str, Path]:
+def build_topics_output_directories(root_name: str = "output_agenttube") -> dict[str, Path]:
     """
-    Build output directories specifically for Stages 5-7.
+    Build output directories specifically for Stages 5-6.
 
     Arguments:
         root_name (str): Top-level output folder name.
 
     Returns:
-        dict[str, Path]: Output directories for claims, fact-checked claims, and news scripts.
+        dict[str, Path]: Output directories for topics and perspective digest artifacts.
 
     Example:
-        >>> dirs = build_claims_output_directories()
-        >>> "claims" in dirs
+        >>> dirs = build_topics_output_directories()
+        >>> "topics" in dirs
         True
     """
-    from helpers.output_helper import get_run_date
-
     run_date = get_run_date()
     run_root = Path(root_name) / run_date
 
     directories = {
-        "claims": run_root / "claims",
-        "fact_checked_claims": run_root / "fact_checked_claims",
+        "topics": run_root / "topics",
         "news_script": run_root / "news_script",
     }
 

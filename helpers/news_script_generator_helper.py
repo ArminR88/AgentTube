@@ -1,9 +1,10 @@
-"""DeepSeek news script generator for fact-checked claims."""
+"""DeepSeek perspective digest generator for topic-based summaries."""
 
 from __future__ import annotations
 
 import json
 import logging
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -24,86 +25,142 @@ from helpers.transcript_summarization_helper import (
 )
 
 
-def build_script_prompt() -> str:
+EDITORIAL_NOTE = (
+    "[EDITOR'S NOTE: This perspective digest synthesizes statements made by "
+    "speakers featured on alternative media channels. It presents their "
+    "perspectives without independent verification. Viewers are encouraged "
+    "to evaluate claims critically and consult multiple sources.]"
+)
+
+
+def build_digest_prompt() -> str:
     """
-    Build the instruction block for news script generation.
+    Build prompt instructions for perspective digest generation.
+
+    Arguments:
+        None
 
     Returns:
-        str: Prompt instructions for the model.
+        str: Prompt instructions for a long-form perspective digest.
 
     Example:
-        >>> "NPR" in build_script_prompt()
+        >>> prompt = build_digest_prompt()
+        >>> "PERSPECTIVE DIGEST" in prompt
         True
     """
-    current_date = __import__("datetime").datetime.now().isoformat(timespec="seconds")
     prompt = (
-        "You are a professional news scriptwriter for NPR/CNN style broadcasts.\n\n"
-        f"Current date: {current_date}\n\n"
-        "TASK: Write a flowing 15-minute news script based on fact-checked claims.\n\n"
-        "STYLE REQUIREMENTS:\n"
-        "1. NPR/CNN journalism tone - authoritative, clear, narrative.\n"
-        "2. NO bullet points - write in flowing paragraphs.\n"
-        "3. Structure: News intro → Context → Each claim with verdict → Conclusion.\n"
-        "4. For each claim, clearly state: 'Claim: ... Verdict: True/False/Unverified'.\n"
-        "5. Cite sources naturally: 'According to a report from...'\n"
-        "6. Target length: ~4500 words (15 minutes of spoken audio).\n"
-        "7. Include a host introduction and closing.\n\n"
+        "You are writing a PERSPECTIVE DIGEST, not a fact-check article and not a news verdict.\n\n"
+        "TARGET LENGTH:\n"
+        "- About 4500 words (~15 minutes spoken).\n\n"
+        "REQUIRED SECTIONS IN THIS ORDER:\n"
+        "1. [EDITOR'S NOTE]\n"
+        "2. [INTRODUCTION]\n"
+        "3. [KEY VOICES]\n"
+        "4. [TOPIC: <name>] (one section per topic)\n"
+        "5. [CROSS-CUTTING THEMES]\n"
+        "6. [CONCLUSION]\n\n"
+        "RULES:\n"
+        "- Attribute every perspective to a speaker.\n"
+        "- Do not issue truth verdicts.\n"
+        "- Do not use fact-check language (e.g., fact-check, verified true/false, debunked).\n"
+        "- Present agreement and disagreement clearly and fairly.\n"
+        "- Keep a coherent narrative flow across sections.\n\n"
         "OUTPUT FORMAT:\n"
-        "Plain text script with clear section breaks using [NEWS INTRO], [CONTEXT], [CLAIM 1], etc.\n"
-        "No markdown, no JSON, just the script.\n\n"
-        "Return ONLY the script text."
+        "- Plain text only.\n"
+        "- Use the required bracketed section headers.\n"
+        "- Return only the digest text."
     )
 
     return prompt
 
 
-def build_script_messages(
-    claims_data: dict[str, Any],
-) -> tuple[list[SystemMessage | HumanMessage], str]:
+def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
     """
-    Build messages for script generation.
+    Build model messages from topics data.
 
     Arguments:
-        claims_data (dict[str, Any]): Claims with fact-check verdicts.
+        topics_data (dict[str, Any]): Topics payload containing perspectives and themes.
 
     Returns:
-        tuple[list[SystemMessage | HumanMessage], str]: Messages and prompt text.
+        tuple[list, str]: Messages list and rendered prompt text.
+
+    Example:
+        >>> messages, text = build_digest_messages({"topics": []})
+        >>> len(messages) == 2
+        True
     """
-    claims = claims_data.get("claims", [])
-    claims_text = []
+    topics = topics_data.get("topics") or []
+    blocks: list[str] = []
 
-    for claim in claims:
-        claim_text = claim.get("text", "")
-        verdict = claim.get("validation_status", "unverified")
-        note = claim.get("note", "")
-        sources = claim.get("sources", [])
-        confidence = claim.get("confidence", 0.0)
+    for topic in topics:
+        if not isinstance(topic, dict):
+            continue
 
-        claims_text.append(
-            f"Claim: {claim_text}\n"
-            f"Verdict: {verdict}\n"
-            f"Note: {note}\n"
-            f"Sources: {', '.join(sources) if sources else 'No sources available'}\n"
-            f"Confidence: {confidence:.0%}\n"
-        )
+        topic_name = str(topic.get("name") or "Untitled topic")
+        topic_description = str(topic.get("description") or "").strip()
+        consensus = str(topic.get("consensus") or "mixed")
 
-    combined_claims = "\n---\n".join(claims_text)
+        lines = [f"TOPIC: {topic_name}", f"Consensus: {consensus}"]
+        if topic_description:
+            lines.append(f"Description: {topic_description}")
 
-    system_text = build_script_prompt()
-    human_text = f"Write a news script based on these fact-checked claims:\n\n{combined_claims}"
+        perspectives = topic.get("perspectives") or []
+        if perspectives:
+            lines.append("Perspectives:")
+            for perspective in perspectives:
+                if not isinstance(perspective, dict):
+                    continue
+                speaker = str(perspective.get("speaker") or "Unknown").strip() or "Unknown"
+                channel = str(perspective.get("channel") or "").strip()
+                text = str(perspective.get("text") or "").strip()
+                if not text:
+                    continue
+                if channel:
+                    lines.append(f"  - {speaker} [{channel}]: {text}")
+                else:
+                    lines.append(f"  - {speaker}: {text}")
+
+        themes = topic.get("themes") or []
+        if themes:
+            lines.append("Themes:")
+            for theme in themes:
+                if not isinstance(theme, dict):
+                    continue
+                name = str(theme.get("name") or "").strip()
+                if not name:
+                    continue
+                description = str(theme.get("description") or "").strip()
+                supporting_speakers = theme.get("supporting_speakers") or []
+                speaker_text = ", ".join(str(item).strip() for item in supporting_speakers if str(item).strip())
+                if speaker_text:
+                    lines.append(f"  - {name} (supporting speakers: {speaker_text})")
+                else:
+                    lines.append(f"  - {name}")
+                if description:
+                    lines.append(f"    {description}")
+
+        blocks.append("\n".join(lines))
+
+    rendered_topics = "\n\n---\n\n".join(blocks) if blocks else "No topics available."
+
+    system_text = build_digest_prompt()
+    human_text = (
+        "Write the perspective digest from these topics.\n"
+        "Remember to attribute every perspective to speakers.\n\n"
+        f"{rendered_topics}"
+    )
 
     messages = [
         SystemMessage(content=system_text),
         HumanMessage(content=human_text),
     ]
-
     prompt_text = system_text + "\n\n" + human_text
 
     return messages, prompt_text
 
 
-def generate_news_script(
-    claims_data: dict[str, Any],
+def generate_perspective_digest(
+    topics_data: dict[str, Any],
     api_key: str,
     model: str = DEFAULT_MODEL,
     fallback_model: str = FALLBACK_MODEL,
@@ -113,25 +170,30 @@ def generate_news_script(
     backoff_seconds: int = DEFAULT_BACKOFF_SECONDS,
 ) -> tuple[str, int, float]:
     """
-    Generate a news script from fact-checked claims.
+    Generate a perspective digest from topics data.
 
     Arguments:
-        claims_data (dict[str, Any]): Claims with fact-check verdicts.
+        topics_data (dict[str, Any]): Topics payload with perspectives and themes.
         api_key (str): DeepSeek API key.
         model (str): Primary model name.
         fallback_model (str): Backup model name.
-        temperature (float): Sampling temperature (higher for creativity).
+        temperature (float): Sampling temperature.
         max_tokens (int): Maximum output tokens.
         max_retries (int): Maximum retry count.
-        backoff_seconds (int): Base retry delay.
+        backoff_seconds (int): Base retry delay in seconds.
 
     Returns:
-        tuple[str, int, float]: Script text, tokens used, cost.
-    """
-    if not claims_data.get("claims"):
-        return "No claims available to generate script.", 0, 0.0
+        tuple[str, int, float]: Digest text, tokens used, and estimated cost.
 
-    messages, prompt_text = build_script_messages(claims_data)
+    Example:
+        >>> text, tokens, cost = generate_perspective_digest({"topics": []}, api_key="demo")
+        >>> text.startswith("No topics")
+        True
+    """
+    if not topics_data.get("topics"):
+        return "No topics available to generate digest.", 0, 0.0
+
+    messages, prompt_text = build_digest_messages(topics_data)
     encoding = build_encoding(model)
     fallback_input_tokens = count_tokens(encoding, prompt_text)
 
@@ -157,7 +219,7 @@ def generate_news_script(
             model_name = current_model
             llm_error = None
             break
-        except Exception as exc:
+        except Exception as exc:  # noqa: BLE001
             llm_error = exc
             if current_model == model:
                 logging.warning("Primary model %s failed; falling back to %s.", model, fallback_model)
@@ -165,130 +227,148 @@ def generate_news_script(
             break
 
     if final_response is None:
-        logging.error("Script generation failed: %s", llm_error)
-        return "Script generation failed.", 0, 0.0
+        logging.error("Perspective digest generation failed: %s", llm_error)
+        return "Perspective digest generation failed.", 0, 0.0
 
-    script_text = getattr(final_response, "content", "") or ""
+    digest_text = getattr(final_response, "content", "") or ""
+    if "[EDITOR'S NOTE" not in digest_text.upper():
+        digest_text = EDITORIAL_NOTE + "\n\n" + digest_text
 
     input_tokens, output_tokens, total_tokens = extract_usage_counts(
         final_response,
         fallback_input_tokens,
-        script_text,
+        digest_text,
         encoding,
     )
     cost = compute_cost(input_tokens, output_tokens)
 
     logging.info(
-        "Script generation cost: $%.6f (input=%s, output=%s, total=%s, model=%s, words=%s)",
+        "Perspective digest cost: $%.6f (input=%s, output=%s, total=%s, model=%s, words=%s)",
         cost,
         input_tokens,
         output_tokens,
         total_tokens,
         model_name,
-        len(script_text.split()),
+        len(digest_text.split()),
     )
 
-    return script_text, total_tokens, cost
+    return digest_text, total_tokens, cost
 
 
-def write_news_script(
-    script_text: str,
+def write_perspective_digest(
+    digest_text: str,
     output_dir: str | Path,
-    claims_data: dict[str, Any],
+    topics_data: dict[str, Any],
     tokens_used: int = 0,
     cost: float = 0.0,
 ) -> tuple[Path, Path]:
     """
-    Write news script to text and JSON files.
+    Write perspective digest outputs to text and JSON files.
 
     Arguments:
-        script_text (str): Generated script.
-        output_dir (str | Path): Output directory.
-        claims_data (dict[str, Any]): Original claims data.
-        tokens_used (int): Token usage.
-        cost (float): Cost in USD.
+        digest_text (str): Generated digest text.
+        output_dir (str | Path): Destination directory.
+        topics_data (dict[str, Any]): Topics payload used for generation.
+        tokens_used (int): Token usage count.
+        cost (float): Estimated generation cost.
 
     Returns:
-        tuple[Path, Path]: Paths of text and JSON files.
+        tuple[Path, Path]: Text file path and JSON file path.
+
+    Example:
+        >>> text_path, json_path = write_perspective_digest("x", "tmp/news_script", {"topics": []})
+        >>> text_path.name
+        'perspective_digest.txt'
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    # Write text file
-    text_path = output_path / "news_script.txt"
-    write_text(text_path, script_text)
+    text_path = output_path / "perspective_digest.txt"
+    write_text(text_path, digest_text)
 
-    # Write JSON with metadata
+    topics = topics_data.get("topics") or []
+    topic_count = len(topics)
+    perspective_count = sum(len(topic.get("perspectives") or []) for topic in topics if isinstance(topic, dict))
+
     json_payload = {
-        "script": script_text,
+        "digest": digest_text,
         "metadata": {
-            "word_count": len(script_text.split()),
-            "character_count": len(script_text),
+            "word_count": len(digest_text.split()),
+            "character_count": len(digest_text),
             "tokens_used": tokens_used,
             "cost": cost,
-            "claim_count": len(claims_data.get("claims", [])),
-            "generated_at": __import__("datetime").datetime.now().isoformat(),
+            "topic_count": topic_count,
+            "perspective_count": perspective_count,
+            "generated_at": datetime.now().isoformat(),
         },
-        "claims": claims_data.get("claims", []),
+        "topics": topics,
     }
 
-    json_path = output_path / "news_script.json"
+    json_path = output_path / "perspective_digest.json"
     write_json(json_path, json_payload)
 
     return text_path, json_path
 
 
-def load_fact_checked_claims(claims_file: str | Path) -> dict[str, Any]:
+def load_topics(topics_file: str | Path) -> dict[str, Any]:
     """
-    Load fact-checked claims from JSON file.
+    Load topics payload from disk.
 
     Arguments:
-        claims_file (str | Path): Path to claims_fact_checked.json.
+        topics_file (str | Path): Path to topics.json.
 
     Returns:
-        dict[str, Any]: Claims payload with verdicts.
+        dict[str, Any]: Loaded topics payload.
 
     Example:
-        >>> claims = load_fact_checked_claims("output_agenttube/2026-08-04/fact_checked_claims/claims_fact_checked.json")
-        >>> "claims" in claims
+        >>> payload = {"topics": []}
+        >>> isinstance(payload, dict)
         True
     """
-    claims_path = Path(claims_file)
+    topics_path = Path(topics_file)
 
-    if not claims_path.exists():
-        raise FileNotFoundError(f"Fact-checked claims file not found: {claims_path}")
+    if not topics_path.exists():
+        raise FileNotFoundError(f"Topics file not found: {topics_path}")
 
-    with open(claims_path, "r", encoding="utf-8") as file:
+    with open(topics_path, "r", encoding="utf-8") as file:
         payload = json.load(file)
 
     return payload
 
 
-def build_script_stats(claims_count: int, word_count: int, tokens_used: int, cost: float) -> dict[str, Any]:
+def build_digest_stats(
+    topic_count: int,
+    perspective_count: int,
+    word_count: int,
+    tokens_used: int,
+    cost: float,
+) -> dict[str, Any]:
     """
-    Build stats for the script generation stage.
+    Build stage stats for perspective digest generation.
 
     Arguments:
-        claims_count (int): Number of claims in the script.
-        word_count (int): Word count of the script.
-        tokens_used (int): Token usage.
-        cost (float): Cost in USD.
+        topic_count (int): Number of topics provided.
+        perspective_count (int): Number of perspectives provided.
+        word_count (int): Word count of the generated digest.
+        tokens_used (int): Token usage count.
+        cost (float): Estimated generation cost.
 
     Returns:
-        dict[str, Any]: Stage stats.
+        dict[str, Any]: Stage statistics payload.
 
     Example:
-        >>> stats = build_script_stats(20, 4500, 5000, 0.02)
+        >>> stats = build_digest_stats(8, 40, 4500, 5000, 0.02)
         >>> stats["stage"]
-        'news_script_generation'
+        'perspective_digest_generation'
     """
     stats = {
-        "stage": "news_script_generation",
-        "claim_count": claims_count,
+        "stage": "perspective_digest_generation",
+        "topic_count": topic_count,
+        "perspective_count": perspective_count,
         "word_count": word_count,
         "tokens_used": tokens_used,
         "cost": cost,
-        "generated_at": __import__("datetime").datetime.now().isoformat(),
+        "generated_at": datetime.now().isoformat(),
     }
 
     return stats

@@ -37,8 +37,8 @@ def dev_request_json(url: str, *, timeout: int, params: dict[str, Any] | None = 
         ValueError: If the response body is not valid JSON.
         DevTooManyAttemptsError: If repeated 429 responses exhaust retries.
     """
-    max_retries = 3
-    backoff_seconds = 1
+    max_retries = 5
+    backoff_seconds = 2
     response = None
 
     for attempt in range(max_retries + 1):

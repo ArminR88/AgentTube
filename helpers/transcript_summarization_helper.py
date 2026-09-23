@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import os
@@ -26,7 +27,7 @@ DEEPSEEK_BASE_URL = "https://api.deepseek.com/v1"
 DEFAULT_MODEL = "deepseek-v4-flash"
 FALLBACK_MODEL = "deepseek-chat"
 DEFAULT_TEMPERATURE = 0.3
-DEFAULT_MAX_TOKENS = 2000
+DEFAULT_MAX_TOKENS = 3000
 DEFAULT_MAX_TRANSCRIPT_TOKENS = 15_000
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_BACKOFF_SECONDS = 1
@@ -34,14 +35,20 @@ DEFAULT_COST_PER_INPUT_TOKEN = 0.14 / 1_000_000
 DEFAULT_COST_PER_OUTPUT_TOKEN = 0.28 / 1_000_000
 
 
+class SummaryBullet(BaseModel):
+    """A single bullet in the summary, with speaker attribution."""
+
+    speaker: str = "Unknown"
+    text: str = ""
+    is_opinion: bool = False
+
+
 class SummarizationDraft(BaseModel):
-    """Draft structure expected from the model."""
+    """Structured draft expected from the model."""
 
     summary: str = ""
-    key_takeaways: list[str] = Field(default_factory=list)
+    bullets: list[SummaryBullet] = Field(default_factory=list)
     main_topic: str = ""
-    secondary_topics: list[str] = Field(default_factory=list)
-    claims_to_fact_check: list[str] = Field(default_factory=list)
     sentiment: str = "neutral"
 
 
@@ -49,10 +56,8 @@ class TranscriptSummaryResult(BaseModel):
     """Final structured summary returned by the helper."""
 
     summary: str = ""
-    key_takeaways: list[str] = Field(default_factory=list)
+    bullets: list[SummaryBullet] = Field(default_factory=list)
     main_topic: str = ""
-    secondary_topics: list[str] = Field(default_factory=list)
-    claims_to_fact_check: list[str] = Field(default_factory=list)
     sentiment: str = "neutral"
     tokens_used: int = 0
     cost: float = 0.0
@@ -64,7 +69,8 @@ class SummaryTranscriptBullet(BaseModel):
     """Single bullet in the final summary transcript output."""
 
     bullet_id: int
-    text: str
+    speaker: str = "Unknown"
+    text: str = ""
     is_opinion: bool | None = None
 
 
@@ -97,9 +103,6 @@ OPINION_HINTS = (
     "impossible",
     "absurd",
     "irrational",
-    "clinically insane",
-    "false",
-    "unverified",
 )
 
 
@@ -142,20 +145,48 @@ def build_prompt() -> ChatPromptTemplate:
         True
     """
     system_text = (
-        "You are a precise summarizer. Extract only the MOST IMPORTANT points.\n\n"
-        "RULES:\n"
-        "1. **SELECT** — not everything. Only include points that are central, new, or consequential.\n"
-        "2. **AGGREGATE** — group related points into single bullets.\n"
-        "3. **PRIORITIZE** — aim for 10-15 bullets.\n"
-        "4. **SPEAKER ATTRIBUTION** — EVERY bullet MUST include the speaker's name. Use this format:\n"
-        '   "[Speaker Name] + [what they said]"\n'
-        '   Example: "[Alister Crooke] The US lacks a clear military objective in Iran."\n\n'
-        "OUTPUT FORMAT:\n"
-        "Simple numbered list. Plain text. No JSON."
+        "You are a precise summarizer for interview and panel videos.\n\n"
+        "CRITICAL RULE — SPEAKER ATTRIBUTION:\n"
+        "The speaker is the PERSON talking, not the channel, and not automatically the host.\n"
+        "If the host introduces a guest and the guest is speaking, the speaker is the guest.\n"
+        "Never use the channel name as the speaker.\n\n"
+        "WORKED EXAMPLE:\n"
+        "Channel: Judge Napolitano\n"
+        "Host: Judge Napolitano\n"
+        "Guest: Jeffrey Sachs\n"
+        "If Jeffrey Sachs says, 'Escalation raises global risk,' the bullet speaker must be 'Jeffrey Sachs'.\n"
+        "If Judge Napolitano asks a question or gives his own view, the speaker is 'Judge Napolitano'.\n"
+        "Do not attribute both lines to the host only because he runs the channel.\n\n"
+        "HOW TO IDENTIFY THE SPEAKER:\n"
+        "1. If a person is explicitly named before a statement, use that person.\n"
+        "2. If turn-taking indicates a guest response, use the guest's name.\n"
+        "3. If the host is speaking directly, use the host's name.\n"
+        "4. If unclear, use 'Unknown'.\n\n"
+        "WHAT TO EXTRACT:\n"
+        "- Select only the most important points.\n"
+        "- Target 10-15 bullets.\n"
+        "- Preserve each speaker's framing and wording intent.\n\n"
+        "OPINION FLAG:\n"
+        "- is_opinion=true for judgments, recommendations, predictions, or evaluations.\n"
+        "- is_opinion=false for factual or descriptive statements.\n\n"
+        "Output VALID JSON ONLY with this exact shape:\n"
+        "{{\n"
+        '  "summary": "...",\n'
+        '  "main_topic": "...",\n'
+        '  "sentiment": "neutral|critical|supportive|mixed",\n'
+        '  "bullets": [\n'
+        '    {{"speaker": "...", "text": "...", "is_opinion": true}}\n'
+        "  ]\n"
+        "}}\n\n"
+        "Return ONLY valid JSON. No markdown, no explanation."
     )
     human_text = (
-        "Summarize this video. Include speaker attribution in every bullet. Group related ideas.\n"
-        "{transcript}"
+        "Summarize this video. Attribute every bullet to the actual speaker.\n"
+        "Return ONLY valid JSON matching the schema above.\n\n"
+        "Video title: {video_title}\n"
+        "Channel: {channel_name}\n"
+        "Published: {publish_date}\n\n"
+        "Transcript:\n{transcript}"
     )
     prompt = ChatPromptTemplate.from_messages(
         [
@@ -356,7 +387,7 @@ def invoke_with_retries(
 
 def parse_draft(response_text: str) -> SummarizationDraft:
     """
-    Parse the numbered-list model response.
+    Parse the structured JSON model response.
 
     Arguments:
         response_text (str): Raw model response text.
@@ -365,50 +396,78 @@ def parse_draft(response_text: str) -> SummarizationDraft:
         SummarizationDraft: Parsed structured summary draft.
 
     Example:
-        >>> isinstance(parse_draft("1. [Speaker] Point"), SummarizationDraft)
+        >>> draft = parse_draft('{"summary": "x", "bullets": []}')
+        >>> isinstance(draft, SummarizationDraft)
         True
     """
     cleaned_text = response_text.strip()
 
+    # Strip markdown fences if present
     if cleaned_text.startswith("```"):
         cleaned_text = cleaned_text.strip("`")
-        if cleaned_text.lower().startswith("text"):
+        if cleaned_text.lower().startswith("json"):
             cleaned_text = cleaned_text[4:]
+        cleaned_text = cleaned_text.strip()
 
-    bullet_lines = []
-    for line in cleaned_text.splitlines():
-        stripped_line = line.strip()
-        if not stripped_line:
-            continue
-
-        bullet_match = re.match(r"^\d+\s*[.)-]\s*(.+)$", stripped_line)
-        if bullet_match:
-            bullet_text = bullet_match.group(1).strip()
+    # Try direct JSON parse
+    try:
+        payload = json.loads(cleaned_text)
+    except json.JSONDecodeError:
+        # Try to extract the first JSON object
+        match = re.search(r"\{.*\}", cleaned_text, flags=re.DOTALL)
+        if match:
+            try:
+                payload = json.loads(match.group(0))
+            except json.JSONDecodeError:
+                payload = {}
         else:
-            bullet_text = stripped_line.lstrip("-•").strip()
+            payload = {}
 
-        if bullet_text:
-            bullet_lines.append(bullet_text)
+    if not isinstance(payload, dict):
+        payload = {}
 
-    if not bullet_lines and cleaned_text:
-        bullet_lines = [cleaned_text]
+    # Coerce bullets
+    raw_bullets = payload.get("bullets") or []
+    bullets: list[SummaryBullet] = []
+    for item in raw_bullets:
+        if not isinstance(item, dict):
+            continue
+        speaker = str(item.get("speaker") or "Unknown").strip() or "Unknown"
+        text = str(item.get("text") or "").strip()
+        is_opinion = bool(item.get("is_opinion", False))
+        if text:
+            bullets.append(SummaryBullet(speaker=speaker, text=text, is_opinion=is_opinion))
 
-    summary_text = "\n".join(f"{index}. {bullet}" for index, bullet in enumerate(bullet_lines, 1))
-    first_bullet = bullet_lines[0] if bullet_lines else ""
+    # Fallback: if no bullets parsed, parse numbered or bulleted lines.
+    if not bullets and cleaned_text:
+        for line in cleaned_text.splitlines():
+            stripped = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line.strip())
+            if stripped and not stripped.startswith("{"):
+                bullets.append(SummaryBullet(speaker="Unknown", text=stripped, is_opinion=False))
+
+    summary_text = str(payload.get("summary") or "").strip()
+    main_topic = str(payload.get("main_topic") or "").strip()
+    sentiment = str(payload.get("sentiment") or "neutral").strip() or "neutral"
+
+    if not summary_text and bullets:
+        summary_text = " ".join(b.text for b in bullets[:3])
 
     draft = SummarizationDraft(
         summary=summary_text,
-        key_takeaways=bullet_lines,
-        main_topic=first_bullet,
-        secondary_topics=[],
-        claims_to_fact_check=[],
-        sentiment="neutral",
+        bullets=bullets,
+        main_topic=main_topic,
+        sentiment=sentiment,
     )
 
     return draft
 
 
-def extract_usage_counts(response: Any, fallback_input_tokens: int, response_text: str, encoding: tiktoken.Encoding) -> tuple[int, int, int]:
+def extract_usage_counts(
+    response: Any,
+    fallback_input_tokens: int,
+    response_text: str,
+    encoding: tiktoken.Encoding,
+) -> tuple[int, int, int]:
     """
     Extract token usage.
 
@@ -483,10 +542,8 @@ def build_failure_result(error_message: str) -> TranscriptSummaryResult:
     """
     failure_result = TranscriptSummaryResult(
         summary="",
-        key_takeaways=[],
+        bullets=[],
         main_topic="",
-        secondary_topics=[],
-        claims_to_fact_check=[],
         sentiment="neutral",
         tokens_used=0,
         cost=0.0,
@@ -582,29 +639,48 @@ def build_summary_transcript_record(record: dict[str, Any]) -> dict[str, Any]:
         dict[str, Any]: Simplified summary transcript record.
 
     Example:
-        >>> build_summary_transcript_record({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "channel_name": "Demo", "title": "Test", "summary_result": {"summary": "hello", "key_takeaways": ["a"]}})["video_id"]
+        >>> build_summary_transcript_record({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "channel_name": "Demo", "title": "Test", "summary_result": {"summary": "hello", "bullets": [{"speaker": "X", "text": "a"}]}})["video_id"]
         'dQw4w9WgXcQ'
     """
     summary_result = record.get("summary_result") or {}
-    bullets = summary_result.get("key_takeaways") or []
+    bullets = summary_result.get("bullets") or []
 
     def infer_is_opinion(text: str) -> bool:
         normalized_text = text.lower()
         return any(hint in normalized_text for hint in OPINION_HINTS)
+
+    structured_bullets: list[SummaryTranscriptBullet] = []
+    for index, bullet in enumerate(bullets):
+        if isinstance(bullet, dict):
+            speaker = str(bullet.get("speaker") or "Unknown").strip() or "Unknown"
+            text = str(bullet.get("text") or "").strip()
+            is_opinion = bullet.get("is_opinion")
+            if is_opinion is None:
+                is_opinion = infer_is_opinion(text)
+            is_opinion = bool(is_opinion)
+        else:
+            speaker = "Unknown"
+            text = str(bullet).strip()
+            is_opinion = infer_is_opinion(text)
+
+        if not text:
+            continue
+
+        structured_bullets.append(
+            SummaryTranscriptBullet(
+                bullet_id=index + 1,
+                speaker=speaker,
+                text=text,
+                is_opinion=is_opinion,
+            )
+        )
 
     summary_transcript_record = SummaryTranscriptRecord(
         video_id=get_video_id(record.get("url", "")),
         channel_name=str(record.get("channel_name") or ""),
         title=str(record.get("title") or ""),
         summary=str(summary_result.get("summary") or ""),
-        bullets=[
-            SummaryTranscriptBullet(
-                bullet_id=index + 1,
-                text=str(bullet),
-                is_opinion=infer_is_opinion(str(bullet)),
-            )
-            for index, bullet in enumerate(bullets)
-        ],
+        bullets=structured_bullets,
     )
 
     if hasattr(summary_transcript_record, "model_dump"):
@@ -700,10 +776,6 @@ def summarize_transcript_record(
 
     Returns:
         dict[str, Any]: Record merged with its summary result.
-
-    Example:
-        >>> summarize_transcript_record({"transcript_available": False}, "transcripts")
-        {'transcript_available': False, 'summary_result': {'summary': '', 'key_takeaways': [], 'main_topic': '', 'secondary_topics': [], 'claims_to_fact_check': [], 'sentiment': 'neutral', 'tokens_used': 0, 'cost': 0.0, 'success': False, 'error': 'Transcript is not available.'}}
     """
     summary_record = dict(record)
 
@@ -767,10 +839,6 @@ def summarize_transcript_records(
 
     Returns:
         list[dict[str, Any]]: Records merged with summary results.
-
-    Example:
-        >>> summarize_transcript_records([], "transcripts")
-        []
     """
     summarized_records: list[dict[str, Any]] = []
 
@@ -793,9 +861,7 @@ def summarize_transcript_records(
         )
         summarized_records.append(summarized_record)
 
-    result_records = summarized_records
-
-    return result_records
+    return summarized_records
 
 
 def summarize_transcript(
@@ -827,11 +893,6 @@ def summarize_transcript(
 
     Returns:
         TranscriptSummaryResult: Structured summary or structured failure.
-
-    Example:
-        >>> result = summarize_transcript("hello world", api_key="test")
-        >>> result is not None
-        True
     """
     resolved_api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
 
@@ -913,20 +974,19 @@ def summarize_transcript(
     cost = compute_cost(input_tokens, output_tokens)
 
     logging.info(
-        "DeepSeek summary cost: $%.6f (input=%s, output=%s, total=%s, model=%s)",
+        "DeepSeek summary cost: $%.6f (input=%s, output=%s, total=%s, model=%s, bullets=%s)",
         cost,
         input_tokens,
         output_tokens,
         total_tokens,
         model_name,
+        len(draft.bullets),
     )
 
     success_result = TranscriptSummaryResult(
         summary=draft.summary,
-        key_takeaways=draft.key_takeaways,
+        bullets=draft.bullets,
         main_topic=draft.main_topic,
-        secondary_topics=draft.secondary_topics,
-        claims_to_fact_check=draft.claims_to_fact_check,
         sentiment=draft.sentiment,
         tokens_used=total_tokens,
         cost=cost,
@@ -946,11 +1006,6 @@ def _build_mock_transcript() -> str:
 
     Returns:
         str: Mock transcript text.
-
-    Example:
-        >>> transcript = _build_mock_transcript()
-        >>> isinstance(transcript, str)
-        True
     """
     mock_transcript = (
         "Welcome back. Today we discuss the state of international conflicts, "
@@ -972,9 +1027,6 @@ def main() -> None:
 
     Returns:
         None
-
-    Example:
-        $ python helpers/transcript_summarization_helper.py
     """
     logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 
