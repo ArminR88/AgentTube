@@ -56,12 +56,12 @@ def build_digest_prompt() -> str:
         "   Example divergence: \"For Sachs, a constitutional crisis. For Giraldi, a violation of international law. For Haiphong, a strategic blunder.\"\n"
         "6. Transition between topics with natural spoken phrases, such as: \"Another highlight:\" \"On the same day,\" \"Separately,\" \"The voices also weighed in on\".\n"
         "7. No meta-commentary. No \"this digest,\" no \"editor's note,\" no \"introduction,\" no \"key voices,\" no \"conclusion.\"\n"
-        "8. Target length: 3500-4500 words (about 20-25 minutes spoken). Cover EVERY topic in the input. If a topic has three perspectives, mention all three. Do not skip topics to save space. Do not merge unrelated topics. Err on the side of longer output - missing a topic is worse than exceeding the target.\n"
+        "8. DISTINCT POINT COVERAGE: Cover every DISTINCT POINT in the input. When multiple speakers make the same point, name them all in one sentence. When speakers make different points, each distinct point gets its own sentence. Never drop a distinct point. Never merge different points into one sentence. Target length: 3000-4000 words.\n"
         "9. Close with a short spoken summary that names the through-line across all topics. Do not label it \"conclusion.\"\n"
         "10. Use \"today\" not \"this week.\" This is a daily digest.\n"
         "11. Every speaker must be named at least once, but speakers are citations, not section owners.\n"
         "12. Plain text only. No JSON, no markdown, no asterisks, no dashes as bullets.\n\n"
-        "13. COVERAGE REQUIREMENT: Every topic in the input must appear in the output. Every perspective within a topic must be named at least once. Never silently drop a speaker or a topic. If two topics overlap, keep them separate but transition naturally between them.\n\n"
+        "13. POINT COUNT CHECK: Before finishing, count the DISTINCT POINTS in the input, not the speakers. A point supported by three speakers is still one point. The output must contain at least one sentence per distinct point. Do not drop points. Do not merge distinct points. If two topics overlap, keep them separate but transition naturally between them.\n\n"
         "Worked example:\n\n"
         "There are a few highlights based on the sources we follow today.\n\n"
         "One story dominated: Donald Trump's speech to the United Nations\n"
@@ -77,6 +77,8 @@ def build_digest_prompt() -> str:
         "Another highlight: American military capacity. Haiphong claims\n"
         "heavy losses. Giraldi warns of a false flag. Sachs frames the war\n"
         "as illegal.\n\n"
+        "Notice how each named speaker gets their own sentence. Haiphong gets\n"
+        "one. Giraldi gets one. Sachs gets one. Never combine them.\n\n"
         "Across all of it, one thread: the US is weakened and isolated."
     )
 
@@ -175,7 +177,7 @@ def generate_perspective_digest(
     model: str = DEFAULT_MODEL,
     fallback_model: str = FALLBACK_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = 8000,
+    max_tokens: int = 12000,
     max_retries: int = DEFAULT_MAX_RETRIES,
     backoff_seconds: int = DEFAULT_BACKOFF_SECONDS,
 ) -> tuple[str, int, float]:
