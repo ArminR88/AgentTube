@@ -25,12 +25,7 @@ from helpers.transcript_summarization_helper import (
 )
 
 
-EDITORIAL_NOTE = (
-    "[EDITOR'S NOTE: This perspective digest synthesizes statements made by "
-    "speakers featured on alternative media channels. It presents their "
-    "perspectives without independent verification. Viewers are encouraged "
-    "to evaluate claims critically and consult multiple sources.]"
-)
+SPOKEN_OPENING = "There are a few highlights based on the sources we follow today."
 
 
 def build_digest_prompt() -> str:
@@ -44,31 +39,44 @@ def build_digest_prompt() -> str:
         str: Prompt instructions for a long-form perspective digest.
 
     Example:
-        >>> prompt = build_digest_prompt()
-        >>> "PERSPECTIVE DIGEST" in prompt
+        >>> "highlights" in build_digest_prompt()
         True
     """
     prompt = (
-        "You are writing a PERSPECTIVE DIGEST, not a fact-check article and not a news verdict.\n\n"
-        "TARGET LENGTH:\n"
-        "- About 4500 words (~15 minutes spoken).\n\n"
-        "REQUIRED SECTIONS IN THIS ORDER:\n"
-        "1. [EDITOR'S NOTE]\n"
-        "2. [INTRODUCTION]\n"
-        "3. [KEY VOICES]\n"
-        "4. [TOPIC: <name>] (one section per topic)\n"
-        "5. [CROSS-CUTTING THEMES]\n"
-        "6. [CONCLUSION]\n\n"
-        "RULES:\n"
-        "- Attribute every perspective to a speaker.\n"
-        "- Do not issue truth verdicts.\n"
-        "- Do not use fact-check language (e.g., fact-check, verified true/false, debunked).\n"
-        "- Present agreement and disagreement clearly and fairly.\n"
-        "- Keep a coherent narrative flow across sections.\n\n"
-        "OUTPUT FORMAT:\n"
-        "- Plain text only.\n"
-        "- Use the required bracketed section headers.\n"
-        "- Return only the digest text."
+        "You are writing a spoken news segment for daily audio. Write for the ear.\n\n"
+        "Follow these rules exactly:\n"
+        "1. Output is a SPOKEN news segment for daily audio. Write for the ear.\n"
+        "2. Start with this exact sentence: \"There are a few highlights based on the sources we follow today.\"\n"
+        "3. Then move through the topics in flowing prose. No headers. No labels. No brackets. No markdown. No bullet points. No section names.\n"
+        "4. Lead each sentence with the event, claim, or action, not the speaker. Speakers appear inline as attribution at the end of a clause.\n"
+        "   Correct: \"The language was ghastly, according to Jeffrey Sachs.\"\n"
+        "   Wrong: \"Jeffrey Sachs said the language was ghastly.\"\n"
+        "5. When multiple speakers agree, group them in one sentence. When they diverge, show the divergence in one sentence each.\n"
+        "   Example agreement: \"Sachs, Giraldi, and Haiphong all converge on the severity.\"\n"
+        "   Example divergence: \"For Sachs, a constitutional crisis. For Giraldi, a violation of international law. For Haiphong, a strategic blunder.\"\n"
+        "6. Transition between topics with natural spoken phrases, such as: \"Another highlight:\" \"On the same day,\" \"Separately,\" \"The voices also weighed in on\".\n"
+        "7. No meta-commentary. No \"this digest,\" no \"editor's note,\" no \"introduction,\" no \"key voices,\" no \"conclusion.\"\n"
+        "8. Target length: 1200-1500 words (about 8-10 minutes spoken).\n"
+        "9. Close with a single short spoken line summarizing the through-line. Do not label it \"conclusion.\"\n"
+        "10. Use \"today\" not \"this week.\" This is a daily digest.\n"
+        "11. Every speaker must be named at least once, but speakers are citations, not section owners.\n"
+        "12. Plain text only. No JSON, no markdown, no asterisks, no dashes as bullets.\n\n"
+        "Worked example:\n\n"
+        "There are a few highlights based on the sources we follow today.\n\n"
+        "One story dominated: Donald Trump's speech to the United Nations\n"
+        "General Assembly on Iran. According to Jeffrey Sachs, the language\n"
+        "was ghastly and unprecedented. Phil Giraldi called it a violation\n"
+        "of the UN Charter. Danny Haiphong read it as a declaration of total\n"
+        "war.\n\n"
+        "They diverge on what it means. For Sachs, a constitutional crisis.\n"
+        "For Giraldi, a violation of international law. For Haiphong, a\n"
+        "strategic blunder.\n\n"
+        "Iran's president, Masoud Pezeshkian, responded from Tehran: \"We\n"
+        "have only defended ourselves. We are not terrorists.\"\n\n"
+        "Another highlight: American military capacity. Haiphong claims\n"
+        "heavy losses. Giraldi warns of a false flag. Sachs frames the war\n"
+        "as illegal.\n\n"
+        "Across all of it, one thread: the US is weakened and isolated."
     )
 
     return prompt
@@ -145,8 +153,9 @@ def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
 
     system_text = build_digest_prompt()
     human_text = (
-        "Write the perspective digest from these topics.\n"
-        "Remember to attribute every perspective to speakers.\n\n"
+        "Write today's spoken digest. Start with the exact opening sentence. "
+        "Follow the style rules. ~1200-1500 words. Return only the script text.\n"
+        f"Date: {datetime.now().date().isoformat()}\n\n"
         f"{rendered_topics}"
     )
 
@@ -165,7 +174,7 @@ def generate_perspective_digest(
     model: str = DEFAULT_MODEL,
     fallback_model: str = FALLBACK_MODEL,
     temperature: float = 0.7,
-    max_tokens: int = 8000,
+    max_tokens: int = 3000,
     max_retries: int = DEFAULT_MAX_RETRIES,
     backoff_seconds: int = DEFAULT_BACKOFF_SECONDS,
 ) -> tuple[str, int, float]:
@@ -231,8 +240,8 @@ def generate_perspective_digest(
         return "Perspective digest generation failed.", 0, 0.0
 
     digest_text = getattr(final_response, "content", "") or ""
-    if "[EDITOR'S NOTE" not in digest_text.upper():
-        digest_text = EDITORIAL_NOTE + "\n\n" + digest_text
+    if not digest_text.startswith("There are a few highlights based on the sources we follow today."):
+        digest_text = SPOKEN_OPENING + "\n\n" + digest_text
 
     input_tokens, output_tokens, total_tokens = extract_usage_counts(
         final_response,
@@ -293,6 +302,7 @@ def write_perspective_digest(
     json_payload = {
         "digest": digest_text,
         "metadata": {
+            "format": "spoken_daily_digest",
             "word_count": len(digest_text.split()),
             "character_count": len(digest_text),
             "tokens_used": tokens_used,
