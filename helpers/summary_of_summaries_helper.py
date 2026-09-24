@@ -87,6 +87,7 @@ def build_topics_prompt() -> str:
         "5. Each theme must include supporting_speakers as a list of speaker names.\n"
         "6. consensus must be one of: high, medium, low, mixed.\n"
         "7. Skip generic or redundant topics.\n\n"
+        "IMPORTANT - TOPIC BALANCE: No single topic may contain more than 3 perspectives. If a topic would need 4 or more, split it into subtopics with distinct names. Example: instead of one 'Ukraine and Europe' topic with 30 perspectives, produce separate topics such as 'Ukraine's Negotiation Prospects', 'European Leaders' Denial', 'Suppression of Dissent in the UK', 'Russia's Post-2014 Identity', 'The Multipolar Transition'. Aim for 10-15 topics total, each with 2-3 perspectives.\n\n"
         "OUTPUT:\n"
         "Return VALID JSON ONLY with this exact shape:\n"
         "{\"topics\": [{\"topic_id\": 1, \"name\": \"...\", \"description\": \"...\",\n"
