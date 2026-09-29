@@ -18,6 +18,7 @@ from helpers.shared_helper import DevTooManyAttemptsError, dev_request_json, set
 TIMEOUT = 30
 DEV_TRANSCRIPT_RATE_LIMIT_LIMIT = 3
 DEV_TRANSCRIPT_RATE_LIMIT_STREAK = 0
+INTER_VIDEO_DELAY_SECONDS = 5
 
 
 def is_rate_limit_error(exc: Exception) -> bool:
@@ -330,13 +331,19 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
     return downloaded
 
 
-def download_transcripts(video_urls: list[str], output_dir: str = "transcripts") -> dict[str, int]:
+def download_transcripts(
+    video_urls: list[str],
+    output_dir: str = "transcripts",
+    inter_video_delay: int | None = None,
+) -> dict[str, int]:
     """
     Download transcripts for multiple YouTube videos.
 
     Arguments:
         video_urls (list[str]): List of YouTube video URLs.
         output_dir (str): Directory to save transcript files.
+        inter_video_delay (int | None): Seconds to sleep between videos.
+            Uses INTER_VIDEO_DELAY_SECONDS when not provided.
 
     Returns:
         dict[str, int]: Statistics with keys 'success', 'failed', and 'total'.
@@ -351,6 +358,7 @@ def download_transcripts(video_urls: list[str], output_dir: str = "transcripts")
         "dev_rate_limit_exhausted": False,
         "dev_rate_limit_error": None,
     }
+    delay = inter_video_delay if inter_video_delay is not None else INTER_VIDEO_DELAY_SECONDS
 
     for index, url in enumerate(video_urls, 1):
         logging.info("Processing %s/%s: %s", index, stats["total"], url)
@@ -358,6 +366,9 @@ def download_transcripts(video_urls: list[str], output_dir: str = "transcripts")
             stats["success"] += 1
         else:
             stats["failed"] += 1
+
+        logging.debug("Sleeping %s seconds before next video", delay)
+        time.sleep(delay)
 
     if stats["failed"] > 0:
         logging.warning(
@@ -374,6 +385,7 @@ def download_transcripts(video_urls: list[str], output_dir: str = "transcripts")
 def download_transcripts_from_records(
     records: list[dict[str, Any]],
     output_dir: str = "transcripts",
+    inter_video_delay: int | None = None,
 ) -> dict[str, int]:
     """
     Download transcripts for detection records.
@@ -381,6 +393,8 @@ def download_transcripts_from_records(
     Arguments:
         records (list[dict[str, Any]]): Detection records from the pipeline.
         output_dir (str): Directory to save transcript files.
+        inter_video_delay (int | None): Seconds to sleep between videos.
+            Uses INTER_VIDEO_DELAY_SECONDS when not provided.
 
     Returns:
         dict[str, int]: Statistics with keys 'success', 'failed', and 'total'.
@@ -395,6 +409,7 @@ def download_transcripts_from_records(
         "dev_rate_limit_exhausted": False,
         "dev_rate_limit_error": None,
     }
+    delay = inter_video_delay if inter_video_delay is not None else INTER_VIDEO_DELAY_SECONDS
 
     for index, record in enumerate(records, 1):
         logging.info("Processing %s/%s: %s", index, stats["total"], record["url"])
@@ -402,6 +417,9 @@ def download_transcripts_from_records(
             stats["success"] += 1
         else:
             stats["failed"] += 1
+
+        logging.debug("Sleeping %s seconds before next video", delay)
+        time.sleep(delay)
 
     if stats["failed"] > 0:
         logging.warning(

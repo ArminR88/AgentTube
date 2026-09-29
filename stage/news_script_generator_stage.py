@@ -1,5 +1,6 @@
 """Stage runner for generating perspective digests from topics."""
 
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -9,6 +10,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from helpers.shared_helper import setup_logging
+from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
 from helpers.news_script_generator_helper import (
     build_digest_stats,
     generate_perspective_digest,
@@ -18,9 +20,6 @@ from helpers.news_script_generator_helper import (
 
 
 def run_stage(
-    topics_file: str | Path,
-    output_dir: str | Path,
-    api_key: str | None = None,
     model: str = "deepseek-v4-flash",
     fallback_model: str = "deepseek-chat",
     temperature: float = 0.7,
@@ -32,9 +31,6 @@ def run_stage(
     Run the perspective digest generation stage.
 
     Arguments:
-        topics_file (str | Path): Path to topics.json.
-        output_dir (str | Path): Directory to save digest files.
-        api_key (str | None): DeepSeek API key.
         model (str): Primary model name.
         fallback_model (str): Backup model name.
         temperature (float): Sampling temperature (higher for creativity).
@@ -50,11 +46,19 @@ def run_stage(
         >>> "digest" in result
         True
     """
+    output_dirs = build_output_directories()
+    claims_dirs = build_topics_output_directories()
+    topics_file = claims_dirs["topics"] / "topics.json"
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise SystemExit("DEEPSEEK_API_KEY is not set.")
+
     # Load topics
     try:
         topics_data = load_topics(topics_file)
     except FileNotFoundError as exc:
         stats = build_digest_stats(0, 0, 0, 0, 0.0)
+        write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
         return {
             "digest": "",
             "word_count": 0,
@@ -68,6 +72,7 @@ def run_stage(
 
     if not topics_data.get("topics"):
         stats = build_digest_stats(0, 0, 0, 0, 0.0)
+        write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
         return {
             "digest": "No topics available to generate digest.",
             "word_count": 0,
@@ -94,7 +99,7 @@ def run_stage(
     # Write digest files
     text_path, json_path = write_perspective_digest(
         digest_text,
-        output_dir,
+        claims_dirs["news_script"],
         topics_data,
         tokens_used,
         cost,
@@ -110,6 +115,7 @@ def run_stage(
     )
     word_count = len(digest_text.split())
     stats = build_digest_stats(topic_count, perspective_count, word_count, tokens_used, cost)
+    write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
 
     return {
         "digest": digest_text,
@@ -137,24 +143,8 @@ def main() -> None:
     """
     import argparse
     import json
-    import os
 
     parser = argparse.ArgumentParser(description="Run the perspective digest generation stage")
-    parser.add_argument(
-        "--topics-file",
-        required=True,
-        help="Path to topics.json",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        help="Directory to save script files",
-    )
-    parser.add_argument(
-        "--api-key",
-        default=os.environ.get("DEEPSEEK_API_KEY"),
-        help="DeepSeek API key (defaults to DEEPSEEK_API_KEY from environment)",
-    )
     parser.add_argument(
         "--model",
         default="deepseek-v4-flash",
@@ -192,13 +182,7 @@ def main() -> None:
 
     setup_logging(args.verbose)
 
-    if not args.api_key:
-        raise SystemExit("DEEPSEEK_API_KEY is not set.")
-
     result = run_stage(
-        topics_file=args.topics_file,
-        output_dir=args.output_dir,
-        api_key=args.api_key,
         model=args.model,
         fallback_model=args.fallback_model,
         temperature=args.temperature,

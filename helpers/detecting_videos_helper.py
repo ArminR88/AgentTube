@@ -9,7 +9,7 @@ from zoneinfo import ZoneInfo
 
 from requests import RequestException
 
-from helpers.shared_helper import dev_request_json, setup_logging as shared_setup_logging
+from helpers.shared_helper import dev_request_json
 
 API_KEY_ENV = "YOUTUBE_API_KEY"
 START_HOUR = 17
@@ -21,10 +21,10 @@ VIDEO_DURATION_PATTERN = re.compile(
 )
 
 CHANNEL_IDS = [
-    "UCOxLhz6B_elvLflntSEfnzA",      # Danny_Haiphong
-    "UCDkEYb-TXJVWLvOokshtlsw",      # Judge_Napolitano
-    "UCZFCDIHTe9HGxtIuVDpBz7g",      # Glenn Diesen
-    "UCWDN5zr5ttctoIAhZwW6tcQ",      # Daniel Davis / Deep Dive
+    "UCOxLhz6B_elvLflntSEfnzA",  # Danny_Haiphong
+    "UCDkEYb-TXJVWLvOokshtlsw",  # Judge_Napolitano
+    "UCZFCDIHTe9HGxtIuVDpBz7g",  # Glenn Diesen
+    "UCWDN5zr5ttctoIAhZwW6tcQ",  # Daniel Davis / Deep Dive
 ]
 
 CHANNEL_NAMES = {
@@ -51,17 +51,15 @@ def get_api_key() -> str | None:
         ...     print("API key found")
     """
     api_key = os.environ.get(API_KEY_ENV)
-
     return api_key
-
-
-def setup_logging(verbose: bool = False) -> None:
-    shared_setup_logging(verbose)
 
 
 def get_time_window() -> tuple[str, str]:
     """
     Calculate the fixed 24-hour window from yesterday 17:00 to today 17:00 local time.
+
+    Arguments:
+        None
 
     Returns:
         tuple[str, str]: (published_after, published_before) in UTC ISO format.
@@ -74,12 +72,11 @@ def get_time_window() -> tuple[str, str]:
     now = datetime.now(LOCAL_TIMEZONE)
     end = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
     start = end - timedelta(days=1)
-
+    # Keep a fixed 24h window anchored at START_HOUR in local time.
     end = start + timedelta(days=1)
     published_after = start.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     published_before = end.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     time_window = (published_after, published_before)
-
     return time_window
 
 
@@ -98,7 +95,6 @@ def get_channel_name(channel_id: str) -> str:
         'Danny_Haiphong'
     """
     channel_name = CHANNEL_NAMES.get(channel_id, channel_id)
-
     return channel_name
 
 
@@ -119,12 +115,6 @@ def fetch_channel_videos(
 
     Returns:
         list[dict[str, Any]]: List of non-live video metadata objects.
-
-    Notes:
-        Live and upcoming broadcast entries are skipped.
-
-    Raises:
-        RequestException: On API request failure.
 
     Example:
         >>> videos = fetch_channel_videos(
@@ -148,14 +138,14 @@ def fetch_channel_videos(
         "type": "video",
     }
 
-    data = dev_request_json(url, timeout=TIMEOUT_SECONDS, params=params)
-    videos = []
-
-    for item in data.get("items", []):
+    # Fetch and normalize the returned search items into flat video records.
+    videos: list[dict[str, Any]] = []
+    for item in dev_request_json(url, timeout=TIMEOUT_SECONDS, params=params).get("items", []):
         snippet = item["snippet"]
         live_status = snippet.get("liveBroadcastContent", "none")
-
-        if live_status != "none":
+        is_live_or_upcoming = live_status != "none"
+        # Skip live/upcoming streams; only process regular uploaded videos.
+        if is_live_or_upcoming == True:
             logging.info(
                 "Skipping %s broadcast for channel %s: %s",
                 live_status,
@@ -190,10 +180,15 @@ def fetch_video_durations(video_ids: list[str], api_key: str) -> dict[str, str]:
 
     Returns:
         dict[str, str]: Durations keyed by video ID in hh:mm:ss format.
-    """
-    if not video_ids:
-        empty_durations: dict[str, str] = {}
 
+    Example:
+        >>> durations = fetch_video_durations(["abc123"], "key")
+        >>> isinstance(durations, dict)
+        True
+    """
+    has_no_video_ids = len(video_ids) == 0
+    if has_no_video_ids == True:
+        empty_durations: dict[str, str] = {}
         return empty_durations
 
     url = "https://www.googleapis.com/youtube/v3/videos"
@@ -205,19 +200,13 @@ def fetch_video_durations(video_ids: list[str], api_key: str) -> dict[str, str]:
     }
 
     durations: dict[str, str] = {}
-
     for item in dev_request_json(url, timeout=TIMEOUT_SECONDS, params=params).get("items", []):
         video_id = item.get("id")
         duration_text = item.get("contentDetails", {}).get("duration")
-
-        if not video_id or not duration_text:
-            continue
-
-        durations[video_id] = format_duration(duration_text)
-
-    result_durations = durations
-
-    return result_durations
+        has_duration_payload = bool(video_id) and bool(duration_text)
+        if has_duration_payload == True:
+            durations[video_id] = format_duration(duration_text)
+    return durations
 
 
 def format_duration(duration_text: str) -> str:
@@ -235,21 +224,17 @@ def format_duration(duration_text: str) -> str:
         '01:02:03'
     """
     match = VIDEO_DURATION_PATTERN.match(duration_text)
-    if not match:
+    has_no_match = match is None
+    if has_no_match == True:
         fallback_duration = "00:00:00"
-
         return fallback_duration
 
     days = int(match.group("days") or 0)
     hours = int(match.group("hours") or 0)
     minutes = int(match.group("minutes") or 0)
     seconds = int(match.group("seconds") or 0)
-
     total_hours = days * 24 + hours
-    duration = f"{total_hours:02d}:{minutes:02d}:{seconds:02d}"
-
-    formatted_duration = duration
-
+    formatted_duration = f"{total_hours:02d}:{minutes:02d}:{seconds:02d}"
     return formatted_duration
 
 
@@ -268,13 +253,14 @@ def detect_recent_videos(api_key: str) -> dict[str, dict[str, Any]]:
         >>> "UCOxLhz6B_elvLflntSEfnzA" in results
         True
     """
-    published_after, published_before = get_time_window()
+    time_window = get_time_window()
+    published_after = time_window[0]
+    published_before = time_window[1]
     results: dict[str, dict[str, Any]] = {}
 
     for channel_id in CHANNEL_IDS:
         channel_name = get_channel_name(channel_id)
         logging.info("Checking channel: %s", channel_name)
-
         try:
             videos = fetch_channel_videos(channel_id, published_after, published_before, api_key)
         except RequestException as exc:
@@ -282,23 +268,15 @@ def detect_recent_videos(api_key: str) -> dict[str, dict[str, Any]]:
             results[channel_id] = {"name": channel_name, "videos": [], "error": str(exc)}
             continue
 
+        # Build one batch duration lookup and then annotate each video in-place.
         video_ids = [video["video_id"] for video in videos]
-        durations_by_id: dict[str, str] = {}
-
-        if video_ids:
-            try:
-                durations_by_id = fetch_video_durations(video_ids, api_key)
-            except RequestException as exc:
-                logging.error("Failed to fetch durations for %s: %s", channel_name, exc)
-
+        durations_by_id = fetch_video_durations(video_ids, api_key)
         for video in videos:
             video["duration"] = durations_by_id.get(video["video_id"], "00:00:00")
 
         results[channel_id] = {"name": channel_name, "videos": videos, "error": None}
 
-    result_results = results
-
-    return result_results
+    return results
 
 
 def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
@@ -317,9 +295,10 @@ def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str
         []
     """
     records: list[dict[str, Any]] = []
-
     for channel_id, data in results.items():
-        if data["error"]:
+        has_channel_error = bool(data["error"])
+        # Preserve channel-level fetch errors by skipping that channel in flat output.
+        if has_channel_error == True:
             logging.warning("Skipping channel %s: %s", data["name"], data["error"])
             continue
 
@@ -335,7 +314,4 @@ def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str
                     "description": video.get("description", ""),
                 }
             )
-
-    result_records = records
-
-    return result_records
+    return records

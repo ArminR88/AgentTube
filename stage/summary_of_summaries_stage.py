@@ -1,5 +1,7 @@
 """Stage runner for extracting topics across videos."""
 
+from datetime import datetime
+import os
 from pathlib import Path
 import sys
 from typing import Any
@@ -9,6 +11,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from helpers.shared_helper import setup_logging
+from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
 from helpers.summary_of_summaries_helper import (
     extract_topics,
     load_summary_files,
@@ -18,9 +21,6 @@ from helpers.summary_of_summaries_helper import (
 
 
 def run_stage(
-    summary_dir: str | Path,
-    output_dir: str | Path,
-    api_key: str | None = None,
     model: str = "deepseek-v4-flash",
     fallback_model: str = "deepseek-chat",
     temperature: float = 0.3,
@@ -32,9 +32,6 @@ def run_stage(
     Run the topic extraction stage.
 
     Arguments:
-        summary_dir (str | Path): Directory containing _summary.json files.
-        output_dir (str | Path): Directory to save topics.json.
-        api_key (str | None): DeepSeek API key.
         model (str): Primary model name.
         fallback_model (str): Backup model name.
         temperature (float): Sampling temperature.
@@ -51,7 +48,9 @@ def run_stage(
         True
     """
     # Load all summary files
-    summary_records = load_summary_files(summary_dir)
+    output_dirs = build_output_directories()
+    claims_dirs = build_topics_output_directories()
+    summary_records = load_summary_files(output_dirs["transcript_summary"])
     
     if not summary_records:
         empty_stats = {
@@ -60,7 +59,10 @@ def run_stage(
             "topic_count": 0,
             "perspective_count": 0,
             "theme_count": 0,
+            "error": "No summary files found",
+            "generated_at": datetime.now().isoformat(),
         }
+        write_json(output_dirs["pipeline_summary"] / "05_topic_extraction.json", empty_stats)
         return {
             "topics": [],
             "topic_count": 0,
@@ -72,6 +74,10 @@ def run_stage(
             "summary_record_count": 0,
             "error": "No summary files found",
         }
+
+    api_key = os.environ.get("DEEPSEEK_API_KEY")
+    if not api_key:
+        raise SystemExit("DEEPSEEK_API_KEY is not set.")
 
     # Extract topics
     topics_draft, tokens_used, cost = extract_topics(
@@ -86,10 +92,11 @@ def run_stage(
     )
 
     # Write topics
-    topics_path = write_topics(topics_draft, output_dir, tokens_used, cost)
+    topics_path = write_topics(topics_draft, claims_dirs["topics"], tokens_used, cost)
 
     # Build stats
     stats = build_topics_stats(len(summary_records), topics_draft)
+    write_json(output_dirs["pipeline_summary"] / "05_topic_extraction.json", stats)
 
     topics_payload = [
         topic.model_dump() if hasattr(topic, "model_dump") else topic.dict()
@@ -124,24 +131,8 @@ def main() -> None:
     """
     import argparse
     import json
-    import os
 
     parser = argparse.ArgumentParser(description="Run the topic extraction stage")
-    parser.add_argument(
-        "--summary-dir",
-        required=True,
-        help="Directory containing _summary.json files",
-    )
-    parser.add_argument(
-        "--output-dir",
-        required=True,
-        help="Directory to save topics.json",
-    )
-    parser.add_argument(
-        "--api-key",
-        default=os.environ.get("DEEPSEEK_API_KEY"),
-        help="DeepSeek API key (defaults to DEEPSEEK_API_KEY from environment)",
-    )
     parser.add_argument(
         "--model",
         default="deepseek-v4-flash",
@@ -179,13 +170,7 @@ def main() -> None:
 
     setup_logging(args.verbose)
 
-    if not args.api_key:
-        raise SystemExit("DEEPSEEK_API_KEY is not set.")
-
     result = run_stage(
-        summary_dir=args.summary_dir,
-        output_dir=args.output_dir,
-        api_key=args.api_key,
         model=args.model,
         fallback_model=args.fallback_model,
         temperature=args.temperature,

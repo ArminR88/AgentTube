@@ -1,9 +1,10 @@
 """Stage runner for detecting transcript availability on videos.
 
-This stage receives the video-detection records and enriches them with
+This stage loads video-detection records from disk and enriches them with
 transcript metadata for downstream processing.
 """
 
+import json
 from pathlib import Path
 import sys
 
@@ -13,15 +14,32 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from helpers.transcript_detection_helper import detect_transcripts_for_records  # noqa: E402
+from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 from helpers.shared_helper import setup_logging  # noqa: E402
 
 
-def run_stage(records: list[dict[str, object]]) -> list[dict[str, object]]:
+def _load_records(path: Path) -> list[dict[str, object]]:
     """
-    Run the transcript detection stage for the provided records.
+    Load records from JSON.
 
     Arguments:
-        records (list[dict[str, object]]): Flat records from the video detection stage.
+        path (Path): Path to JSON input.
+
+    Returns:
+        list[dict[str, object]]: Loaded records.
+    """
+    with open(path, "r", encoding="utf-8") as file:
+        records = json.load(file)
+
+    return records
+
+
+def run_stage() -> list[dict[str, object]]:
+    """
+    Run the transcript detection stage using default pipeline locations.
+
+    Arguments:
+        None
 
     Returns:
         list[dict[str, object]]: The same records with transcript metadata added.
@@ -30,7 +48,15 @@ def run_stage(records: list[dict[str, object]]) -> list[dict[str, object]]:
         >>> run_stage([])
         []
     """
+    output_dirs = build_output_directories()
+    records_path = output_dirs["pipeline_summary"] / "01_detection.json"
+
+    if not records_path.exists():
+        raise SystemExit(f"Detection input not found: {records_path}")
+
+    records = _load_records(records_path)
     enriched_records = detect_transcripts_for_records(records)
+    write_json(output_dirs["pipeline_summary"] / "02_transcript_detection.json", enriched_records)
 
     return enriched_records
 
@@ -49,23 +75,15 @@ def main() -> None:
         $ python stage/transcript_detection_stage.py --json
     """
     import argparse
-    import json
 
     parser = argparse.ArgumentParser(description="Run the transcript detection stage")
     parser.add_argument("--json", action="store_true", help="Print records as JSON")
-    parser.add_argument("records_file", nargs="?", help="JSON file with detection records")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
     args = parser.parse_args()
 
     setup_logging(args.verbose)
 
-    if not args.records_file:
-        raise SystemExit("Provide a JSON file with detection records.")
-
-    with open(args.records_file, "r", encoding="utf-8") as file:
-        records = json.load(file)
-
-    enriched_records = run_stage(records)
+    enriched_records = run_stage()
 
     if args.json:
         print(json.dumps(enriched_records, indent=2, default=str))

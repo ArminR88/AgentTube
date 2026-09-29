@@ -1,8 +1,4 @@
-"""Stage runner for detecting recent YouTube videos.
-
-This stage is the executable boundary for the detection step.
-It reads the API key, runs the detector, and returns flat records.
-"""
+"""Stage runner for detecting recent YouTube videos."""
 
 from pathlib import Path
 import sys
@@ -17,7 +13,7 @@ from helpers.detecting_videos_helper import (  # noqa: E402
     detect_recent_videos,
     get_api_key,
 )
-from helpers.shared_helper import setup_logging  # noqa: E402
+from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 
 
 def run_stage() -> list[dict[str, object]]:
@@ -52,46 +48,7 @@ def run_stage() -> list[dict[str, object]]:
     results = detect_recent_videos(api_key)
     records = build_detection_records(results)
 
+    output_dirs = build_output_directories()
+    write_json(output_dirs["pipeline_summary"] / "01_detection.json", records)
+
     return records
-
-
-def main() -> None:
-    """
-    CLI entry point for the detection stage.
-
-    Arguments:
-        None
-
-    Returns:
-        None
-
-    Example:
-        $ python stage/detecting_videos_stage.py --json
-    """
-    import argparse
-    import json
-    import logging
-
-    parser = argparse.ArgumentParser(description="Run the detection stage")
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--json", action="store_true", help="Print records as JSON")
-    args = parser.parse_args()
-
-    setup_logging(args.verbose)
-
-    try:
-        records = run_stage()
-    except SystemExit as exc:
-        logging.error(str(exc))
-        raise
-
-    if args.json:
-        print(json.dumps(records, indent=2, default=str))
-        return
-
-    for index, record in enumerate(records, 1):
-        print(f"{index}. {record['channel_name']} | {record['title']} | duration: {record['duration']}")
-
-
-if __name__ == "__main__":
-    main()
