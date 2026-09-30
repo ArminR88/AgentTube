@@ -10,7 +10,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from helpers.shared_helper import setup_logging
 from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
 from helpers.summary_of_summaries_helper import (
     extract_topics,
@@ -43,16 +42,17 @@ def run_stage(
         dict[str, Any]: Stage results with topics and stats.
 
     Example:
-        >>> result = run_stage("transcript_summary", "claims")
+        >>> result = run_stage()
         >>> "topics" in result
         True
     """
-    # Load all summary files
+    # Load summary inputs produced by the previous stage.
     output_dirs = build_output_directories()
     claims_dirs = build_topics_output_directories()
     summary_records = load_summary_files(output_dirs["transcript_summary"])
-    
-    if not summary_records:
+
+    has_no_summary_records = not summary_records
+    if has_no_summary_records == True:
         empty_stats = {
             "stage": "topic_extraction",
             "summary_record_count": 0,
@@ -63,7 +63,7 @@ def run_stage(
             "generated_at": datetime.now().isoformat(),
         }
         write_json(output_dirs["pipeline_summary"] / "05_topic_extraction.json", empty_stats)
-        return {
+        empty_result = {
             "topics": [],
             "topic_count": 0,
             "perspective_count": 0,
@@ -75,11 +75,13 @@ def run_stage(
             "error": "No summary files found",
         }
 
+        return empty_result
+
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise SystemExit("DEEPSEEK_API_KEY is not set.")
 
-    # Extract topics
+    # Extract topics from the summary corpus.
     topics_draft, tokens_used, cost = extract_topics(
         summary_records,
         api_key=api_key,
@@ -91,20 +93,29 @@ def run_stage(
         backoff_seconds=backoff_seconds,
     )
 
-    # Write topics
+    # Persist extracted topics for downstream stages.
     topics_path = write_topics(topics_draft, claims_dirs["topics"], tokens_used, cost)
 
-    # Build stats
-    stats = build_topics_stats(len(summary_records), topics_draft)
+    summary_record_count = len(summary_records)
+    stats = build_topics_stats(summary_record_count, topics_draft)
     write_json(output_dirs["pipeline_summary"] / "05_topic_extraction.json", stats)
 
-    topics_payload = [
-        topic.model_dump() if hasattr(topic, "model_dump") else topic.dict()
-        for topic in topics_draft.topics
-    ]
-    perspective_count = sum(len(topic.perspectives) for topic in topics_draft.topics)
+    # Build API-safe topic payloads and accumulate perspective totals in one pass.
+    topics_payload = []
+    perspective_count = 0
+    for topic in topics_draft.topics:
+        has_model_dump = hasattr(topic, "model_dump")
+        if has_model_dump == True:
+            topic_payload = topic.model_dump()
+        else:
+            topic_payload = topic.dict()
 
-    return {
+        topics_payload.append(topic_payload)
+
+        perspective_total_for_topic = len(topic.perspectives)
+        perspective_count += perspective_total_for_topic
+
+    result = {
         "topics": topics_payload,
         "topic_count": len(topics_draft.topics),
         "perspective_count": perspective_count,
@@ -112,81 +123,7 @@ def run_stage(
         "cost": cost,
         "output_path": str(topics_path),
         "stats": stats,
-        "summary_record_count": len(summary_records),
+        "summary_record_count": summary_record_count,
     }
 
-
-def main() -> None:
-    """
-    CLI entry point for the summary-of-summaries stage.
-
-    Arguments:
-        None
-
-    Returns:
-        None
-
-    Example:
-        $ python stage/summary_of_summaries_stage.py --summary-dir output_agenttube/2026-08-04/transcript_summary --output-dir output_agenttube/2026-08-04/topics
-    """
-    import argparse
-    import json
-
-    parser = argparse.ArgumentParser(description="Run the topic extraction stage")
-    parser.add_argument(
-        "--model",
-        default="deepseek-v4-flash",
-        help="Primary DeepSeek model name",
-    )
-    parser.add_argument(
-        "--fallback-model",
-        default="deepseek-chat",
-        help="Backup DeepSeek model name",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.3,
-        help="Sampling temperature",
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=6000,
-        help="Maximum output tokens",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print results as JSON",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose logging",
-    )
-    args = parser.parse_args()
-
-    setup_logging(args.verbose)
-
-    result = run_stage(
-        model=args.model,
-        fallback_model=args.fallback_model,
-        temperature=args.temperature,
-        max_tokens=args.max_tokens,
-    )
-
-    if args.json:
-        print(json.dumps(result, indent=2, default=str))
-        return
-
-    print(f"Summary records processed: {result['summary_record_count']}")
-    print(f"Topics extracted: {result['topic_count']}")
-    print(f"Perspectives: {result['perspective_count']}")
-    print(f"Cost: ${result['cost']:.6f}")
-    print(f"Output: {result['output_path']}")
-
-
-if __name__ == "__main__":
-    main()
+    return result

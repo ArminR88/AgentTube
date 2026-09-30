@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -120,20 +119,11 @@ def load_summary_files(summary_dir: str | Path) -> list[dict[str, Any]]:
     summary_path = Path(summary_dir)
     records: list[dict[str, Any]] = []
 
-    if not summary_path.exists():
-        logging.warning("Summary directory not found: %s", summary_path)
-        return records
-
     for file_path in sorted(summary_path.glob("*_summary.json")):
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                payload = json.load(file)
-            if isinstance(payload, dict):
-                records.append(payload)
-            else:
-                logging.warning("Skipping malformed summary file (not object): %s", file_path)
-        except Exception as exc:  # noqa: BLE001
-            logging.warning("Failed loading summary file %s: %s", file_path, exc)
+        with open(file_path, "r", encoding="utf-8") as file:
+            payload = json.load(file)
+
+        records.append(payload)
 
     return records
 
@@ -158,30 +148,65 @@ def build_topics_messages(
     record_blocks: list[str] = []
 
     for record in summary_records:
-        channel = str(record.get("channel_name") or "Unknown channel")
-        title = str(record.get("title") or "Unknown title")
-        video_id = str(record.get("video_id") or "")
-        bullets = record.get("bullets") or []
+        channel_value = record.get("channel_name")
+        if channel_value is None:
+            channel_value = "Unknown channel"
+        channel = str(channel_value)
+
+        title_value = record.get("title")
+        if title_value is None:
+            title_value = "Unknown title"
+        title = str(title_value)
+
+        video_id_value = record.get("video_id")
+        if video_id_value is None:
+            video_id_value = ""
+        video_id = str(video_id_value)
+
+        bullets = record.get("bullets")
+        if bullets is None:
+            bullets = []
 
         lines = [f"VIDEO: {channel} - {title} (video_id={video_id})"]
-        if bullets:
+        has_bullets = bool(bullets)
+        if has_bullets == True:
             for bullet in bullets:
                 if isinstance(bullet, dict):
-                    speaker = str(bullet.get("speaker") or "Unknown").strip() or "Unknown"
-                    text = str(bullet.get("text") or "").strip()
+                    speaker_value = bullet.get("speaker")
+                    if speaker_value is None:
+                        speaker_value = "Unknown"
+                    speaker = str(speaker_value).strip()
+                    if speaker == "":
+                        speaker = "Unknown"
+
+                    text_value = bullet.get("text")
+                    if text_value is None:
+                        text_value = ""
+                    text = str(text_value).strip()
                 else:
                     speaker = "Unknown"
                     text = str(bullet).strip()
-                if text:
+
+                has_text = bool(text)
+                if has_text == True:
                     lines.append(f"  [{speaker}] {text}")
         else:
-            summary_text = str(record.get("summary") or "").strip()
-            if summary_text:
+            summary_value = record.get("summary")
+            if summary_value is None:
+                summary_value = ""
+            summary_text = str(summary_value).strip()
+
+            has_summary_text = bool(summary_text)
+            if has_summary_text == True:
                 lines.append(f"  [Unknown] {summary_text}")
 
         record_blocks.append("\n".join(lines))
 
-    corpus_text = "\n\n".join(record_blocks) if record_blocks else "No summary records provided."
+    has_record_blocks = bool(record_blocks)
+    if has_record_blocks == True:
+        corpus_text = "\n\n".join(record_blocks)
+    else:
+        corpus_text = "No summary records provided."
 
     system_text = build_topics_prompt()
     human_text = (
@@ -216,89 +241,153 @@ def parse_topics_draft(response_text: str) -> TopicsDraft:
     """
     cleaned_text = response_text.strip()
     if cleaned_text.startswith("```"):
-        cleaned_text = re.sub(r"^```json\s*", "", cleaned_text, flags=re.IGNORECASE)
-        cleaned_text = re.sub(r"^```", "", cleaned_text)
-        cleaned_text = re.sub(r"```$", "", cleaned_text).strip()
+        cleaned_text = cleaned_text.strip("`")
+        has_json_prefix = cleaned_text.lower().startswith("json")
+        if has_json_prefix == True:
+            cleaned_text = cleaned_text[4:]
+
+        cleaned_text = cleaned_text.strip()
 
     payload: Any
-    try:
-        payload = json.loads(cleaned_text)
-    except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", cleaned_text, flags=re.DOTALL)
-        if match:
-            try:
-                payload = json.loads(match.group(0))
-            except json.JSONDecodeError:
-                payload = {}
-        else:
-            payload = {}
+    payload = json.loads(cleaned_text)
 
     if not isinstance(payload, dict):
         payload = {}
 
-    raw_topics = payload.get("topics") or []
+    raw_topics = payload.get("topics")
+    if raw_topics is None:
+        raw_topics = []
+
     topics: list[Topic] = []
 
     for raw_topic in raw_topics:
         if not isinstance(raw_topic, dict):
             continue
 
-        name = str(raw_topic.get("name") or "").strip()
-        if not name:
+        name_value = raw_topic.get("name")
+        if name_value is None:
+            name_value = ""
+        name = str(name_value).strip()
+
+        has_no_name = not name
+        if has_no_name == True:
             continue
 
-        raw_perspectives = raw_topic.get("perspectives") or []
+        raw_perspectives = raw_topic.get("perspectives")
+        if raw_perspectives is None:
+            raw_perspectives = []
+
         perspectives: list[Perspective] = []
         for raw_perspective in raw_perspectives:
             if not isinstance(raw_perspective, dict):
                 continue
-            perspective_text = str(raw_perspective.get("text") or "").strip()
-            if not perspective_text:
+
+            perspective_text_value = raw_perspective.get("text")
+            if perspective_text_value is None:
+                perspective_text_value = ""
+            perspective_text = str(perspective_text_value).strip()
+
+            has_no_perspective_text = not perspective_text
+            if has_no_perspective_text == True:
                 continue
+
+            speaker_value = raw_perspective.get("speaker")
+            if speaker_value is None:
+                speaker_value = "Unknown"
+            speaker = str(speaker_value).strip()
+            if speaker == "":
+                speaker = "Unknown"
+
+            channel_value = raw_perspective.get("channel")
+            if channel_value is None:
+                channel_value = ""
+            channel = str(channel_value).strip()
+
+            video_id_value = raw_perspective.get("video_id")
+            if video_id_value is None:
+                video_id_value = ""
+            video_id = str(video_id_value).strip()
+
             perspective = Perspective(
-                speaker=str(raw_perspective.get("speaker") or "Unknown").strip() or "Unknown",
-                channel=str(raw_perspective.get("channel") or "").strip(),
-                video_id=str(raw_perspective.get("video_id") or "").strip(),
+                speaker=speaker,
+                channel=channel,
+                video_id=video_id,
                 text=perspective_text,
             )
             perspectives.append(perspective)
 
-        raw_themes = raw_topic.get("themes") or []
+        raw_themes = raw_topic.get("themes")
+        if raw_themes is None:
+            raw_themes = []
+
         themes: list[Theme] = []
         for raw_theme in raw_themes:
             if not isinstance(raw_theme, dict):
                 continue
-            theme_name = str(raw_theme.get("name") or "").strip()
-            if not theme_name:
+
+            theme_name_value = raw_theme.get("name")
+            if theme_name_value is None:
+                theme_name_value = ""
+            theme_name = str(theme_name_value).strip()
+
+            has_no_theme_name = not theme_name
+            if has_no_theme_name == True:
                 continue
-            raw_supporters = raw_theme.get("supporting_speakers") or []
-            supporting_speakers = [
-                str(speaker).strip()
-                for speaker in raw_supporters
-                if str(speaker).strip()
-            ]
+
+            raw_supporters = raw_theme.get("supporting_speakers")
+            if raw_supporters is None:
+                raw_supporters = []
+
+            supporting_speakers = []
+            for speaker in raw_supporters:
+                cleaned_speaker = str(speaker).strip()
+                has_cleaned_speaker = bool(cleaned_speaker)
+                if has_cleaned_speaker == True:
+                    supporting_speakers.append(cleaned_speaker)
+
+            description_value = raw_theme.get("description")
+            if description_value is None:
+                description_value = ""
+            description = str(description_value).strip()
+
             theme = Theme(
                 name=theme_name,
-                description=str(raw_theme.get("description") or "").strip(),
+                description=description,
                 supporting_speakers=supporting_speakers,
             )
             themes.append(theme)
 
-        consensus = str(raw_topic.get("consensus") or "mixed").strip().lower()
+        consensus_value = raw_topic.get("consensus")
+        if consensus_value is None:
+            consensus_value = "mixed"
+        consensus = str(consensus_value).strip().lower()
+
         if consensus not in {"high", "medium", "low", "mixed"}:
             consensus = "mixed"
 
+        topic_id_value = raw_topic.get("topic_id")
+        if topic_id_value is None:
+            topic_id_value = len(topics) + 1
+        topic_id = int(topic_id_value)
+
+        topic_description_value = raw_topic.get("description")
+        if topic_description_value is None:
+            topic_description_value = ""
+        topic_description = str(topic_description_value).strip()
+
         topic = Topic(
-            topic_id=int(raw_topic.get("topic_id") or (len(topics) + 1)),
+            topic_id=topic_id,
             name=name,
-            description=str(raw_topic.get("description") or "").strip(),
+            description=topic_description,
             perspectives=perspectives,
             themes=themes,
             consensus=consensus,
         )
         topics.append(topic)
 
-    return TopicsDraft(topics=topics)
+    topics_draft = TopicsDraft(topics=topics)
+
+    return topics_draft
 
 
 def extract_topics(
@@ -332,47 +421,43 @@ def extract_topics(
         >>> draft.topics
         []
     """
-    if not summary_records:
-        return TopicsDraft(topics=[]), 0, 0.0
+    has_no_summary_records = not summary_records
+    if has_no_summary_records == True:
+        empty_topics = TopicsDraft(topics=[])
+        empty_result = (empty_topics, 0, 0.0)
+
+        return empty_result
 
     messages, prompt_text = build_topics_messages(summary_records)
     encoding = build_encoding(model)
     fallback_input_tokens = count_tokens(encoding, prompt_text)
 
-    llm_error: Exception | None = None
-    final_response = None
+    selected_model = model
     model_name = model
 
-    for current_model in (model, fallback_model):
-        llm = build_llm(
-            api_key=api_key,
-            model_name=current_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+    # Keep signature compatibility while using a single explicit model path.
+    if fallback_model == "":
+        selected_model = model
 
-        try:
-            final_response = invoke_with_retries(
-                llm,
-                messages,
-                max_retries=max_retries,
-                backoff_seconds=backoff_seconds,
-            )
-            model_name = current_model
-            llm_error = None
-            break
-        except Exception as exc:  # noqa: BLE001
-            llm_error = exc
-            if current_model == model:
-                logging.warning("Primary model %s failed; falling back to %s.", model, fallback_model)
-                continue
-            break
+    llm = build_llm(
+        api_key=api_key,
+        model_name=selected_model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
 
-    if final_response is None:
-        logging.error("Topic extraction failed: %s", llm_error)
-        return TopicsDraft(topics=[]), 0, 0.0
+    final_response = invoke_with_retries(
+        llm,
+        messages,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+    )
+    model_name = selected_model
 
-    response_text = getattr(final_response, "content", "") or ""
+    response_text = getattr(final_response, "content", "")
+    if response_text is None:
+        response_text = ""
+
     draft = parse_topics_draft(response_text)
 
     input_tokens, output_tokens, total_tokens = extract_usage_counts(
@@ -384,8 +469,11 @@ def extract_topics(
     cost = compute_cost(input_tokens, output_tokens)
 
     topic_count = len(draft.topics)
-    perspective_count = sum(len(topic.perspectives) for topic in draft.topics)
-    theme_count = sum(len(topic.themes) for topic in draft.topics)
+    perspective_count = 0
+    theme_count = 0
+    for topic in draft.topics:
+        perspective_count += len(topic.perspectives)
+        theme_count += len(topic.themes)
 
     logging.info(
         "Topic extraction cost: $%.6f (input=%s, output=%s, total=%s, model=%s, topics=%s, perspectives=%s, themes=%s)",
@@ -399,7 +487,9 @@ def extract_topics(
         theme_count,
     )
 
-    return draft, total_tokens, cost
+    result = (draft, total_tokens, cost)
+
+    return result
 
 
 def write_topics(
@@ -429,13 +519,22 @@ def write_topics(
     output_path.mkdir(parents=True, exist_ok=True)
 
     topic_count = len(topics_draft.topics)
-    perspective_count = sum(len(topic.perspectives) for topic in topics_draft.topics)
+    perspective_count = 0
+    for topic in topics_draft.topics:
+        perspective_count += len(topic.perspectives)
+
+    topic_payloads = []
+    for topic in topics_draft.topics:
+        has_model_dump = hasattr(topic, "model_dump")
+        if has_model_dump == True:
+            topic_payload = topic.model_dump()
+        else:
+            topic_payload = topic.dict()
+
+        topic_payloads.append(topic_payload)
 
     payload = {
-        "topics": [
-            topic.model_dump() if hasattr(topic, "model_dump") else topic.dict()
-            for topic in topics_draft.topics
-        ],
+        "topics": topic_payloads,
         "metadata": {
             "topic_count": topic_count,
             "perspective_count": perspective_count,
@@ -494,8 +593,11 @@ def build_topics_stats(summary_record_count: int, topics_draft: TopicsDraft) -> 
         'topic_extraction'
     """
     topic_count = len(topics_draft.topics)
-    perspective_count = sum(len(topic.perspectives) for topic in topics_draft.topics)
-    theme_count = sum(len(topic.themes) for topic in topics_draft.topics)
+    perspective_count = 0
+    theme_count = 0
+    for topic in topics_draft.topics:
+        perspective_count += len(topic.perspectives)
+        theme_count += len(topic.themes)
 
     stats = {
         "stage": "topic_extraction",
