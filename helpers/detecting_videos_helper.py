@@ -25,6 +25,9 @@ CHANNEL_IDS = [
     "UCDkEYb-TXJVWLvOokshtlsw",  # Judge_Napolitano
     "UCZFCDIHTe9HGxtIuVDpBz7g",  # Glenn Diesen
     "UCWDN5zr5ttctoIAhZwW6tcQ",  # Daniel Davis / Deep Dive
+    "UCTWBp-39z6tvz4-LQB-Z_QA",  # Mario_Nawfal
+    "UCEATT6H3U5lu20eKPuHVN8A",  # Chris_Hedges
+    "UCewRbK22LRnNi6N3EcGjbow",  # Transition_Protocol
 ]
 
 CHANNEL_NAMES = {
@@ -32,6 +35,13 @@ CHANNEL_NAMES = {
     "UCDkEYb-TXJVWLvOokshtlsw": "Judge_Napolitano",
     "UCZFCDIHTe9HGxtIuVDpBz7g": "Glenn_Diesen",
     "UCWDN5zr5ttctoIAhZwW6tcQ": "Daniel_Davis",
+    "UCTWBp-39z6tvz4-LQB-Z_QA": "Mario_Nawfal",
+    "UCEATT6H3U5lu20eKPuHVN8A": "Chris_Hedges",
+    "UCewRbK22LRnNi6N3EcGjbow": "Transition_Protocol",
+}
+
+CHANNEL_TITLE_FILTERS = {
+    "UCTWBp-39z6tvz4-LQB-Z_QA": ["parsi", "johnson", "pape", "mearsheimer", "wilkerson", "escobar", "diesen"],
 }
 
 
@@ -298,6 +308,28 @@ def detect_recent_videos(api_key: str) -> dict[str, dict[str, Any]]:
     return results
 
 
+def title_matches_filter(title: str, keywords: list[str]) -> bool:
+    """
+    Check whether a video title contains any of the keywords.
+
+    Arguments:
+        title (str): Video title.
+        keywords (list[str]): Keywords to match against.
+
+    Returns:
+        bool: True if any keyword appears in the title (case-insensitive).
+
+    Example:
+        >>> title_matches_filter("Parsi on Iran", ["parsi"])
+        True
+    """
+    title_lower = title.lower()
+    for keyword in keywords:
+        if keyword.lower() in title_lower:
+            return True
+    return False
+
+
 def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Flatten detection results into downstream records.
@@ -322,6 +354,11 @@ def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str
             continue
 
         for video in data["videos"]:
+            channel_filter = CHANNEL_TITLE_FILTERS.get(channel_id)
+            if channel_filter is not None:
+                if title_matches_filter(video["title"], channel_filter) == False:
+                    continue
+
             records.append(
                 {
                     "channel_id": channel_id,
