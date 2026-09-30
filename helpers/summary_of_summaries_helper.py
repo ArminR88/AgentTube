@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from helpers.shared_helper import load_json_object
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
@@ -548,32 +549,6 @@ def write_topics(
     write_json(topics_path, payload)
 
     return topics_path
-
-
-def load_topics(topics_file: str | Path) -> dict[str, Any]:
-    """
-    Load topics JSON payload from disk.
-
-    Arguments:
-        topics_file (str | Path): Path to topics.json.
-
-    Returns:
-        dict[str, Any]: Loaded topics payload.
-
-    Example:
-        >>> payload = {"topics": []}
-        >>> isinstance(payload, dict)
-        True
-    """
-    topics_path = Path(topics_file)
-
-    if not topics_path.exists():
-        raise FileNotFoundError(f"Topics file not found: {topics_path}")
-
-    with open(topics_path, "r", encoding="utf-8") as file:
-        payload = json.load(file)
-
-    return payload
 
 
 def build_topics_stats(summary_record_count: int, topics_draft: TopicsDraft) -> dict[str, Any]:

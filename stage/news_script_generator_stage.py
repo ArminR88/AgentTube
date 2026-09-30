@@ -10,10 +10,10 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
+from helpers.shared_helper import load_json_object
 from helpers.news_script_generator_helper import (
     build_digest_stats,
     generate_perspective_digest,
-    load_topics,
     write_perspective_digest,
 )
 
@@ -54,7 +54,7 @@ def run_stage(
 
     # Load topics
     try:
-        topics_data = load_topics(topics_file)
+        topics_data = load_json_object(topics_file, missing_label="Topics file")
     except FileNotFoundError as exc:
         stats = build_digest_stats(0, 0, 0, 0, 0.0)
         write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
