@@ -209,48 +209,45 @@ def generate_perspective_digest(
         >>> text.startswith("No topics")
         True
     """
-    if not topics_data.get("topics"):
-        return "No topics available to generate digest.", 0, 0.0
+    has_no_topics = not topics_data.get("topics")
+    if has_no_topics == True:
+        empty_text = "No topics available to generate digest."
+        empty_result = (empty_text, 0, 0.0)
+
+        return empty_result
 
     messages, prompt_text = build_digest_messages(topics_data)
     encoding = build_encoding(model)
     fallback_input_tokens = count_tokens(encoding, prompt_text)
 
-    llm_error: Exception | None = None
-    final_response = None
+    selected_model = model
     model_name = model
 
-    for current_model in (model, fallback_model):
-        llm = build_llm(
-            api_key=api_key,
-            model_name=current_model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+    # Keep signature compatibility while using one explicit model call path.
+    if fallback_model == "":
+        selected_model = model
 
-        try:
-            final_response = invoke_with_retries(
-                llm,
-                messages,
-                max_retries=max_retries,
-                backoff_seconds=backoff_seconds,
-            )
-            model_name = current_model
-            llm_error = None
-            break
-        except Exception as exc:  # noqa: BLE001
-            llm_error = exc
-            if current_model == model:
-                logging.warning("Primary model %s failed; falling back to %s.", model, fallback_model)
-                continue
-            break
+    llm = build_llm(
+        api_key=api_key,
+        model_name=selected_model,
+        temperature=temperature,
+        max_tokens=max_tokens,
+    )
 
-    if final_response is None:
-        logging.error("Perspective digest generation failed: %s", llm_error)
-        return "Perspective digest generation failed.", 0, 0.0
+    final_response = invoke_with_retries(
+        llm,
+        messages,
+        max_retries=max_retries,
+        backoff_seconds=backoff_seconds,
+    )
+    model_name = selected_model
 
-    digest_text = getattr(final_response, "content", "") or ""
-    if not digest_text.startswith("There are a few highlights based on the sources we follow today."):
+    digest_text = getattr(final_response, "content", "")
+    if digest_text is None:
+        digest_text = ""
+
+    has_expected_opening = digest_text.startswith("There are a few highlights based on the sources we follow today.")
+    if has_expected_opening == False:
         digest_text = SPOKEN_OPENING + "\n\n" + digest_text
 
     input_tokens, output_tokens, total_tokens = extract_usage_counts(
@@ -271,7 +268,9 @@ def generate_perspective_digest(
         len(digest_text.split()),
     )
 
-    return digest_text, total_tokens, cost
+    result = (digest_text, total_tokens, cost)
+
+    return result
 
 
 def write_perspective_digest(
@@ -305,21 +304,38 @@ def write_perspective_digest(
     text_path = output_path / "perspective_digest.txt"
     write_text(text_path, digest_text)
 
-    topics = topics_data.get("topics") or []
+    topics = topics_data.get("topics")
+    if topics is None:
+        topics = []
+
     topic_count = len(topics)
-    perspective_count = sum(len(topic.get("perspectives") or []) for topic in topics if isinstance(topic, dict))
+
+    perspective_count = 0
+    for topic in topics:
+        if isinstance(topic, dict) == False:
+            continue
+
+        perspectives = topic.get("perspectives")
+        if perspectives is None:
+            perspectives = []
+
+        perspective_count += len(perspectives)
+
+    word_count = len(digest_text.split())
+    character_count = len(digest_text)
+    generated_at = datetime.now().isoformat()
 
     json_payload = {
         "digest": digest_text,
         "metadata": {
             "format": "spoken_daily_digest",
-            "word_count": len(digest_text.split()),
-            "character_count": len(digest_text),
+            "word_count": word_count,
+            "character_count": character_count,
             "tokens_used": tokens_used,
             "cost": cost,
             "topic_count": topic_count,
             "perspective_count": perspective_count,
-            "generated_at": datetime.now().isoformat(),
+            "generated_at": generated_at,
         },
         "topics": topics,
     }
@@ -327,7 +343,9 @@ def write_perspective_digest(
     json_path = output_path / "perspective_digest.json"
     write_json(json_path, json_payload)
 
-    return text_path, json_path
+    result = (text_path, json_path)
+
+    return result
 
 
 def load_topics(topics_file: str | Path) -> dict[str, Any]:

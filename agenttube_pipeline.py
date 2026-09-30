@@ -19,8 +19,8 @@ def run_pipeline(
     cond_run_transcript_detection_stage=False,
     cond_run_download_stage=False,
     cond_run_summary_stage=False,
-    cond_run_topics_stage=True,
-    cond_run_script_stage=False,
+    cond_run_topics_stage=False,
+    cond_run_script_stage=True,
 ):
     """
     Run all AgentTube stages in order.

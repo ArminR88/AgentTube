@@ -9,7 +9,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from helpers.shared_helper import setup_logging
 from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
 from helpers.news_script_generator_helper import (
     build_digest_stats,
@@ -42,7 +41,7 @@ def run_stage(
         dict[str, Any]: Stage results with digest and stats.
 
     Example:
-        >>> result = run_stage("topics/topics.json", "news_script")
+        >>> result = run_stage()
         >>> "digest" in result
         True
     """
@@ -126,78 +125,3 @@ def run_stage(
         "json_output_path": str(json_path),
         "stats": stats,
     }
-
-
-def main() -> None:
-    """
-    CLI entry point for the perspective digest generation stage.
-
-    Arguments:
-        None
-
-    Returns:
-        None
-
-    Example:
-        $ python stage/news_script_generator_stage.py --topics-file output_agenttube/2026-08-04/topics/topics.json --output-dir output_agenttube/2026-08-04/news_script
-    """
-    import argparse
-    import json
-
-    parser = argparse.ArgumentParser(description="Run the perspective digest generation stage")
-    parser.add_argument(
-        "--model",
-        default="deepseek-v4-flash",
-        help="Primary DeepSeek model name",
-    )
-    parser.add_argument(
-        "--fallback-model",
-        default="deepseek-chat",
-        help="Backup DeepSeek model name",
-    )
-    parser.add_argument(
-        "--temperature",
-        type=float,
-        default=0.7,
-        help="Sampling temperature (higher = more creative)",
-    )
-    parser.add_argument(
-        "--max-tokens",
-        type=int,
-        default=8000,
-        help="Maximum output tokens",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="Print results as JSON",
-    )
-    parser.add_argument(
-        "-v",
-        "--verbose",
-        action="store_true",
-        help="Enable verbose logging",
-    )
-    args = parser.parse_args()
-
-    setup_logging(args.verbose)
-
-    result = run_stage(
-        model=args.model,
-        fallback_model=args.fallback_model,
-        temperature=args.temperature,
-        max_tokens=args.max_tokens,
-    )
-
-    if args.json:
-        print(json.dumps(result, indent=2, default=str))
-        return
-
-    print(f"Word count: {result['word_count']}")
-    print(f"Cost: ${result['cost']:.6f}")
-    print(f"Text output: {result['text_output_path']}")
-    print(f"JSON output: {result['json_output_path']}")
-
-
-if __name__ == "__main__":
-    main()
