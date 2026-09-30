@@ -8,8 +8,6 @@ from yt_dlp.utils import DownloadError
 
 from helpers.downloading_transcript_helper import get_english_transcript_tracks
 
-from helpers.shared_helper import setup_logging
-
 MINIMUM_TRANSCRIPT_DURATION_SECONDS = 15 * 60
 
 
@@ -22,6 +20,10 @@ def parse_duration_to_seconds(duration_text: str) -> int:
 
     Returns:
         int: Total duration in seconds.
+
+    Example:
+        >>> parse_duration_to_seconds("01:02:03")
+        3723
     """
     hours_text, minutes_text, seconds_text = duration_text.split(":")
     hours = int(hours_text)
@@ -42,6 +44,10 @@ def is_transcript_eligible(record: dict[str, Any]) -> bool:
 
     Returns:
         bool: True when the video is longer than the minimum duration.
+
+    Example:
+        >>> is_transcript_eligible({"duration": "00:20:00"})
+        True
     """
     duration_text = str(record.get("duration", "00:00:00"))
     duration_seconds = parse_duration_to_seconds(duration_text)
@@ -92,7 +98,8 @@ def detect_transcript_data(video_url: str) -> dict[str, Any]:
         languages.append(language)
 
         url = track.get("url")
-        if url:
+        has_url = bool(url)
+        if has_url == True:
             transcript_urls.append(url)
 
     transcript_data = {
@@ -123,7 +130,8 @@ def detect_transcripts_for_records(records: list[dict[str, Any]]) -> list[dict[s
     enriched_records: list[dict[str, Any]] = []
 
     for record in records:
-        if not is_transcript_eligible(record):
+        transcript_is_eligible = is_transcript_eligible(record)
+        if transcript_is_eligible == False:
             continue
 
         transcript_data = detect_transcript_data(record["url"])
@@ -131,13 +139,12 @@ def detect_transcripts_for_records(records: list[dict[str, Any]]) -> list[dict[s
         enriched_record.update(transcript_data)
         enriched_records.append(enriched_record)
 
-        if transcript_data["transcript_error"]:
+        has_transcript_error = bool(transcript_data["transcript_error"])
+        if has_transcript_error == True:
             logging.warning(
                 "Transcript detection failed for %s: %s",
                 record.get("title", record["url"]),
                 transcript_data["transcript_error"],
             )
 
-    result_records = enriched_records
-
-    return result_records
+    return enriched_records
