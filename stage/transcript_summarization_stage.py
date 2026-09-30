@@ -32,7 +32,7 @@ def run_stage(
         list[dict[str, Any]]: Records merged with summary results.
 
     Example:
-        >>> run_stage([])
+        >>> run_stage(summary_limit=None)
         []
     """
     output_dirs = build_output_directories()
@@ -41,7 +41,9 @@ def run_stage(
     if not records_path.exists():
         raise SystemExit(f"Transcript detection input not found: {records_path}")
 
-    records = _load_records(str(records_path))
+    with open(records_path, "r", encoding="utf-8") as file:
+        records = json.load(file)
+
     summarized_records = summarize_transcript_records(
         records,
         str(output_dirs["transcripts"]),
@@ -51,36 +53,22 @@ def run_stage(
     summary_transcript_records = build_summary_transcript_records(summarized_records)
     write_summary_transcript_records(summary_transcript_records, output_dirs["transcript_summary"])
 
+    # Compute success count explicitly to keep stage statistics easy to review.
+    summary_success_count = 0
+    for record in summarized_records:
+        summary_result = record.get("summary_result", {})
+        has_success = summary_result.get("success")
+        if has_success == True:
+            summary_success_count += 1
+
     summary_stats = {
         "stage": "transcript_summarization",
         "record_count": len(summarized_records),
-        "summary_success_count": sum(
-            1 for record in summarized_records if record.get("summary_result", {}).get("success")
-        ),
+        "summary_success_count": summary_success_count,
         "summary_limit": summary_limit,
         "generated_at": datetime.now().isoformat(),
     }
     write_json(output_dirs["pipeline_summary"] / "04_transcript_summarization.json", summary_stats)
 
     return summarized_records
-
-
-def _load_records(records_file: str) -> list[dict[str, Any]]:
-    """
-    Load transcript records from JSON.
-
-    Arguments:
-        records_file (str): Path to a JSON file with transcript records.
-
-    Returns:
-        list[dict[str, Any]]: Transcript detection records.
-
-    Example:
-        >>> isinstance(_load_records, object)
-        True
-    """
-    with open(records_file, "r", encoding="utf-8") as file:
-        records = json.load(file)
-
-    return records
 

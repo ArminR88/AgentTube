@@ -85,7 +85,11 @@ def detect_transcript_data(video_url: str) -> dict[str, Any]:
     transcript_urls = []
 
     for track in tracks:
-        language = track.get("language") or track.get("lang") or "en"
+        language = track.get("language")
+        if language is None:
+            language = track.get("lang")
+        if language is None:
+            language = "en"
         languages.append(language)
 
         url = track.get("url")

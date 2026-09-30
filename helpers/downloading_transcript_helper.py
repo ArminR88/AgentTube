@@ -96,8 +96,13 @@ def get_english_transcript_tracks(info: dict[str, Any]) -> list[dict[str, Any]]:
     Returns:
         list[dict[str, Any]]: Transcript track dictionaries, or an empty list.
     """
-    captions = info.get("automatic_captions") or {}
-    subtitles = info.get("subtitles") or {}
+    captions = info.get("automatic_captions")
+    if captions is None:
+        captions = {}
+
+    subtitles = info.get("subtitles")
+    if subtitles is None:
+        subtitles = {}
     caption_tracks = captions.get("en")
     subtitle_tracks = subtitles.get("en")
     if caption_tracks:
@@ -195,7 +200,9 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
         is_downloaded = False
         return is_downloaded
 
-    transcript_urls = record.get("transcript_urls") or []
+    transcript_urls = record.get("transcript_urls")
+    if transcript_urls is None:
+        transcript_urls = []
     is_downloaded = False
 
     has_transcript_urls = len(transcript_urls) > 0

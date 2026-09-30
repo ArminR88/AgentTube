@@ -17,26 +17,6 @@ from helpers.transcript_detection_helper import detect_transcripts_for_records  
 from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 
 
-def _load_records(path: Path) -> list[dict[str, object]]:
-    """
-    Load records from JSON.
-
-    Arguments:
-        path (Path): Path to JSON input.
-
-    Returns:
-        list[dict[str, object]]: Loaded records.
-
-    Example:
-        >>> isinstance(_load_records, object)
-        True
-    """
-    with open(path, "r", encoding="utf-8") as file:
-        records = json.load(file)
-
-    return records
-
-
 def run_stage() -> list[dict[str, object]]:
     """
     Run the transcript detection stage using default pipeline locations.
@@ -55,8 +35,14 @@ def run_stage() -> list[dict[str, object]]:
     output_dirs = build_output_directories()
     records_path = output_dirs["pipeline_summary"] / "01_detection.json"
 
-    records = _load_records(records_path)
+    # Load previous stage output from the pipeline summary directory.
+    with open(records_path, "r", encoding="utf-8") as file:
+        records = json.load(file)
+
+    # Enrich records with transcript availability metadata.
     enriched_records = detect_transcripts_for_records(records)
+
+    # Persist stage output for the downstream download stage.
     write_json(output_dirs["pipeline_summary"] / "02_transcript_detection.json", enriched_records)
 
     return enriched_records

@@ -199,20 +199,65 @@ def build_prompt() -> ChatPromptTemplate:
 
 
 def normalize_metadata(metadata: dict[str, Any] | None) -> dict[str, str]:
-    """Normalize optional metadata."""
-    metadata = metadata or {}
+    """
+    Normalize optional metadata.
+
+    Arguments:
+        metadata (dict[str, Any] | None): Optional metadata dictionary.
+
+    Returns:
+        dict[str, str]: Normalized metadata with required keys.
+
+    Example:
+        >>> normalized = normalize_metadata({"video_title": "Demo"})
+        >>> normalized["video_title"]
+        'Demo'
+    """
+    if metadata is None:
+        metadata = {}
+
+    video_title_value = metadata.get("video_title")
+    if video_title_value is None:
+        video_title_value = "Unknown title"
+
+    channel_name_value = metadata.get("channel_name")
+    if channel_name_value is None:
+        channel_name_value = "Unknown channel"
+
+    video_url_value = metadata.get("video_url")
+    if video_url_value is None:
+        video_url_value = "Unknown URL"
+
+    publish_date_value = metadata.get("publish_date")
+    if publish_date_value is None:
+        publish_date_value = "Unknown date"
+
     normalized_metadata = {
-        "video_title": str(metadata.get("video_title") or "Unknown title"),
-        "channel_name": str(metadata.get("channel_name") or "Unknown channel"),
-        "video_url": str(metadata.get("video_url") or "Unknown URL"),
-        "publish_date": str(metadata.get("publish_date") or "Unknown date"),
+        "video_title": str(video_title_value),
+        "channel_name": str(channel_name_value),
+        "video_url": str(video_url_value),
+        "publish_date": str(publish_date_value),
     }
 
     return normalized_metadata
 
 
 def count_tokens(encoding: tiktoken.Encoding, text: str) -> int:
-    """Count tokens."""
+    """
+    Count tokens in text.
+
+    Arguments:
+        encoding (tiktoken.Encoding): Token encoding.
+        text (str): Input text.
+
+    Returns:
+        int: Number of tokens.
+
+    Example:
+        >>> encoding = tiktoken.get_encoding("cl100k_base")
+        >>> count_tokens(encoding, "hello") >= 1
+        True
+    """
     if not text:
         token_count = 0
     else:
@@ -226,7 +271,22 @@ def truncate_transcript_if_needed(
     transcript: str,
     max_transcript_tokens: int,
 ) -> str:
-    """Truncate long transcripts."""
+    """
+    Truncate long transcripts.
+
+    Arguments:
+        encoding (tiktoken.Encoding): Token encoding.
+        transcript (str): Transcript text.
+        max_transcript_tokens (int): Maximum allowed transcript tokens.
+
+    Returns:
+        str: Original transcript or a truncated version.
+
+    Example:
+        >>> encoding = tiktoken.get_encoding("cl100k_base")
+        >>> truncate_transcript_if_needed(encoding, "hello", 100)
+        'hello'
+    """
     transcript_tokens = count_tokens(encoding, transcript)
 
     if transcript_tokens <= max_transcript_tokens:
@@ -252,11 +312,32 @@ def build_messages(
     model_name: str = DEFAULT_MODEL,
     max_transcript_tokens: int = DEFAULT_MAX_TRANSCRIPT_TOKENS,
 ) -> tuple[list[SystemMessage | HumanMessage], int, tiktoken.Encoding, str]:
-    """Create prompt messages and estimate input tokens."""
+    """
+    Create prompt messages and estimate input tokens.
+
+    Arguments:
+        transcript (str): Transcript text.
+        metadata (dict[str, Any] | None): Optional metadata dictionary.
+        model_name (str): Model name used for tokenizer selection.
+        max_transcript_tokens (int): Maximum transcript token budget.
+
+    Returns:
+        tuple[list[SystemMessage | HumanMessage], int, tiktoken.Encoding, str]:
+            Rendered messages, estimated input tokens, encoding, and transcript used.
+
+    Example:
+        >>> messages, tokens, _, used_text = build_messages("hello")
+        >>> isinstance(messages, list)
+        True
+    """
     encoding = build_encoding(model_name)
     prompt = build_prompt()
     normalized_metadata = normalize_metadata(metadata)
-    truncated_transcript = truncate_transcript_if_needed(encoding, transcript, max_transcript_tokens)
+    truncated_transcript = truncate_transcript_if_needed(
+        encoding,
+        transcript,
+        max_transcript_tokens,
+    )
 
     rendered_messages = prompt.format_messages(
         video_title=normalized_metadata["video_title"],
@@ -427,30 +508,66 @@ def parse_draft(response_text: str) -> SummarizationDraft:
         payload = {}
 
     # Coerce bullets
-    raw_bullets = payload.get("bullets") or []
+    raw_bullets = payload.get("bullets")
+    if raw_bullets is None:
+        raw_bullets = []
+
     bullets: list[SummaryBullet] = []
     for item in raw_bullets:
         if not isinstance(item, dict):
             continue
-        speaker = str(item.get("speaker") or "Unknown").strip() or "Unknown"
-        text = str(item.get("text") or "").strip()
+
+        speaker_value = item.get("speaker")
+        if speaker_value is None:
+            speaker_value = "Unknown"
+        speaker = str(speaker_value).strip()
+        if speaker == "":
+            speaker = "Unknown"
+
+        text_value = item.get("text")
+        if text_value is None:
+            text_value = ""
+        text = str(text_value).strip()
+
         is_opinion = bool(item.get("is_opinion", False))
         if text:
             bullets.append(SummaryBullet(speaker=speaker, text=text, is_opinion=is_opinion))
 
     # Fallback: if no bullets parsed, parse numbered or bulleted lines.
-    if not bullets and cleaned_text:
-        for line in cleaned_text.splitlines():
-            stripped = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line.strip())
-            if stripped and not stripped.startswith("{"):
-                bullets.append(SummaryBullet(speaker="Unknown", text=stripped, is_opinion=False))
+    has_no_bullets = not bullets
+    has_cleaned_text = bool(cleaned_text)
+    if has_no_bullets == True:
+        if has_cleaned_text == True:
+            for line in cleaned_text.splitlines():
+                stripped = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", line.strip())
+                has_text = bool(stripped)
+                starts_with_object = stripped.startswith("{")
+                if has_text == True:
+                    if starts_with_object == False:
+                        bullets.append(SummaryBullet(speaker="Unknown", text=stripped, is_opinion=False))
 
-    summary_text = str(payload.get("summary") or "").strip()
-    main_topic = str(payload.get("main_topic") or "").strip()
-    sentiment = str(payload.get("sentiment") or "neutral").strip() or "neutral"
+    summary_value = payload.get("summary")
+    if summary_value is None:
+        summary_value = ""
+    summary_text = str(summary_value).strip()
 
-    if not summary_text and bullets:
-        summary_text = " ".join(b.text for b in bullets[:3])
+    topic_value = payload.get("main_topic")
+    if topic_value is None:
+        topic_value = ""
+    main_topic = str(topic_value).strip()
+
+    sentiment_value = payload.get("sentiment")
+    if sentiment_value is None:
+        sentiment_value = "neutral"
+    sentiment = str(sentiment_value).strip()
+    if sentiment == "":
+        sentiment = "neutral"
+
+    has_no_summary = not summary_text
+    has_bullets = bool(bullets)
+    if has_no_summary == True:
+        if has_bullets == True:
+            summary_text = " ".join(b.text for b in bullets[:3])
 
     draft = SummarizationDraft(
         summary=summary_text,
@@ -484,8 +601,14 @@ def extract_usage_counts(
         >>> True
         True
     """
-    usage_metadata = getattr(response, "usage_metadata", None) or {}
-    input_tokens = int(usage_metadata.get("input_tokens") or fallback_input_tokens)
+    usage_metadata = getattr(response, "usage_metadata", None)
+    if usage_metadata is None:
+        usage_metadata = {}
+
+    input_token_value = usage_metadata.get("input_tokens")
+    if input_token_value is None:
+        input_token_value = fallback_input_tokens
+    input_tokens = int(input_token_value)
     output_tokens = usage_metadata.get("output_tokens")
 
     if output_tokens is None:
@@ -628,6 +751,26 @@ def build_summary_metadata(record: dict[str, Any]) -> dict[str, Any]:
     return summary_metadata
 
 
+def infer_is_opinion_from_text(text: str) -> bool:
+    """
+    Infer whether text is opinionated using simple lexical hints.
+
+    Arguments:
+        text (str): Bullet text.
+
+    Returns:
+        bool: True when an opinion hint is present.
+
+    Example:
+        >>> infer_is_opinion_from_text("I think this may happen")
+        True
+    """
+    normalized_text = text.lower()
+    is_opinion = any(hint in normalized_text for hint in OPINION_HINTS)
+
+    return is_opinion
+
+
 def build_summary_transcript_record(record: dict[str, Any]) -> dict[str, Any]:
     """
     Build the final, simplified summary transcript payload for one record.
@@ -642,26 +785,37 @@ def build_summary_transcript_record(record: dict[str, Any]) -> dict[str, Any]:
         >>> build_summary_transcript_record({"url": "https://www.youtube.com/watch?v=dQw4w9WgXcQ", "channel_name": "Demo", "title": "Test", "summary_result": {"summary": "hello", "bullets": [{"speaker": "X", "text": "a"}]}})["video_id"]
         'dQw4w9WgXcQ'
     """
-    summary_result = record.get("summary_result") or {}
-    bullets = summary_result.get("bullets") or []
+    summary_result = record.get("summary_result")
+    if summary_result is None:
+        summary_result = {}
 
-    def infer_is_opinion(text: str) -> bool:
-        normalized_text = text.lower()
-        return any(hint in normalized_text for hint in OPINION_HINTS)
+    bullets = summary_result.get("bullets")
+    if bullets is None:
+        bullets = []
 
     structured_bullets: list[SummaryTranscriptBullet] = []
     for index, bullet in enumerate(bullets):
         if isinstance(bullet, dict):
-            speaker = str(bullet.get("speaker") or "Unknown").strip() or "Unknown"
-            text = str(bullet.get("text") or "").strip()
+            speaker_value = bullet.get("speaker")
+            if speaker_value is None:
+                speaker_value = "Unknown"
+            speaker = str(speaker_value).strip()
+            if speaker == "":
+                speaker = "Unknown"
+
+            text_value = bullet.get("text")
+            if text_value is None:
+                text_value = ""
+            text = str(text_value).strip()
+
             is_opinion = bullet.get("is_opinion")
             if is_opinion is None:
-                is_opinion = infer_is_opinion(text)
+                is_opinion = infer_is_opinion_from_text(text)
             is_opinion = bool(is_opinion)
         else:
             speaker = "Unknown"
             text = str(bullet).strip()
-            is_opinion = infer_is_opinion(text)
+            is_opinion = infer_is_opinion_from_text(text)
 
         if not text:
             continue
@@ -700,9 +854,20 @@ def build_summary_transcript_filename(record: dict[str, Any]) -> str:
 
     Returns:
         str: Filename ending in _summary.json.
+
+    Example:
+        >>> build_summary_transcript_filename({"video_id": "abc", "channel_name": "demo"}).endswith("_summary.json")
+        True
     """
-    video_id = str(record.get("video_id") or get_video_id(record.get("url", "")))
-    channel_name = str(record.get("channel_name") or "unknown")
+    raw_video_id = record.get("video_id")
+    if raw_video_id is None:
+        raw_video_id = get_video_id(record.get("url", ""))
+
+    video_id = str(raw_video_id)
+    raw_channel_name = record.get("channel_name")
+    if raw_channel_name is None:
+        raw_channel_name = "unknown"
+    channel_name = str(raw_channel_name)
     transcript_filename = build_transcript_filename(channel_name, video_id)
     summary_filename = transcript_filename.replace(".txt", "_summary.json")
 
@@ -719,6 +884,10 @@ def write_summary_transcript_records(records: list[dict[str, Any]], output_dir: 
 
     Returns:
         list[Path]: Written file paths.
+
+    Example:
+        >>> isinstance(write_summary_transcript_records, object)
+        True
     """
     output_path = Path(output_dir)
     written_paths: list[Path] = []
@@ -741,8 +910,15 @@ def build_summary_transcript_records(records: list[dict[str, Any]]) -> list[dict
 
     Returns:
         list[dict[str, Any]]: Simplified summary transcript records.
+
+    Example:
+        >>> build_summary_transcript_records([])
+        []
     """
-    summary_transcript_records = [build_summary_transcript_record(record) for record in records]
+    summary_transcript_records = []
+    for record in records:
+        summary_record = build_summary_transcript_record(record)
+        summary_transcript_records.append(summary_record)
 
     return summary_transcript_records
 
@@ -843,9 +1019,12 @@ def summarize_transcript_records(
     summarized_records: list[dict[str, Any]] = []
 
     for index, record in enumerate(records, 1):
-        if summary_limit is not None and index > summary_limit:
-            logging.info("Summary limit reached at %s record(s).", summary_limit)
-            break
+        has_summary_limit = summary_limit is not None
+        if has_summary_limit == True:
+            exceeded_summary_limit = index > summary_limit
+            if exceeded_summary_limit == True:
+                logging.info("Summary limit reached at %s record(s).", summary_limit)
+                break
 
         summarized_record = summarize_transcript_record(
             record,
@@ -894,7 +1073,9 @@ def summarize_transcript(
     Returns:
         TranscriptSummaryResult: Structured summary or structured failure.
     """
-    resolved_api_key = api_key or os.getenv("DEEPSEEK_API_KEY")
+    resolved_api_key = api_key
+    if resolved_api_key is None:
+        resolved_api_key = os.getenv("DEEPSEEK_API_KEY")
 
     if not resolved_api_key:
         missing_key_result = build_failure_result(
@@ -903,17 +1084,27 @@ def summarize_transcript(
 
         return missing_key_result
 
-    if transcript is None or not transcript.strip():
-        empty_result = build_failure_result("Transcript is empty or missing.")
+    is_empty_transcript = transcript is None
+    if is_empty_transcript == False:
+        normalized_transcript = transcript.strip()
+        is_empty_transcript = normalized_transcript == ""
+
+    if is_empty_transcript == True:
+        empty_message = "Transcript is empty or missing."
+        empty_result = build_failure_result(empty_message)
 
         return empty_result
 
-    messages, estimated_input_tokens, encoding, _ = build_messages(
+    # Prepare prompt messages once and reuse for primary/fallback model attempts.
+    message_bundle = build_messages(
         transcript,
         metadata,
         model_name=model,
         max_transcript_tokens=max_transcript_tokens,
     )
+    messages = message_bundle[0]
+    estimated_input_tokens = message_bundle[1]
+    encoding = message_bundle[2]
     llm_error: Exception | None = None
     final_response = None
     model_name = model
@@ -938,13 +1129,16 @@ def summarize_transcript(
             break
         except Exception as exc:  # noqa: BLE001
             llm_error = exc
-            if current_model == model and is_model_unavailable_error(model, exc):
-                logging.warning(
-                    "Primary model %s appears unavailable; falling back to %s.",
-                    model,
-                    fallback_model,
-                )
-                continue
+            is_primary_model = current_model == model
+            if is_primary_model == True:
+                model_unavailable = is_model_unavailable_error(model, exc)
+                if model_unavailable == True:
+                    logging.warning(
+                        "Primary model %s appears unavailable; falling back to %s.",
+                        model,
+                        fallback_model,
+                    )
+                    continue
 
             break
 
@@ -954,7 +1148,9 @@ def summarize_transcript(
 
         return failure_result
 
-    response_text = getattr(final_response, "content", "") or ""
+    response_text = getattr(final_response, "content", "")
+    if response_text is None:
+        response_text = ""
 
     try:
         draft = parse_draft(response_text)

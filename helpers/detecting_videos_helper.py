@@ -229,10 +229,29 @@ def format_duration(duration_text: str) -> str:
         fallback_duration = "00:00:00"
         return fallback_duration
 
-    days = int(match.group("days") or 0)
-    hours = int(match.group("hours") or 0)
-    minutes = int(match.group("minutes") or 0)
-    seconds = int(match.group("seconds") or 0)
+    days_text = match.group("days")
+    if days_text is None:
+        days = 0
+    else:
+        days = int(days_text)
+
+    hours_text = match.group("hours")
+    if hours_text is None:
+        hours = 0
+    else:
+        hours = int(hours_text)
+
+    minutes_text = match.group("minutes")
+    if minutes_text is None:
+        minutes = 0
+    else:
+        minutes = int(minutes_text)
+
+    seconds_text = match.group("seconds")
+    if seconds_text is None:
+        seconds = 0
+    else:
+        seconds = int(seconds_text)
     total_hours = days * 24 + hours
     formatted_duration = f"{total_hours:02d}:{minutes:02d}:{seconds:02d}"
     return formatted_duration
