@@ -1,10 +1,8 @@
 """Helpers for detecting transcript availability on YouTube videos."""
 
-import logging
 from typing import Any
 
 import yt_dlp
-from yt_dlp.utils import DownloadError
 
 from helpers.downloading_transcript_helper import get_english_transcript_tracks
 
@@ -25,7 +23,10 @@ def parse_duration_to_seconds(duration_text: str) -> int:
         >>> parse_duration_to_seconds("01:02:03")
         3723
     """
-    hours_text, minutes_text, seconds_text = duration_text.split(":")
+    duration_parts = duration_text.split(":")
+    hours_text = duration_parts[0]
+    minutes_text = duration_parts[1]
+    seconds_text = duration_parts[2]
     hours = int(hours_text)
     minutes = int(minutes_text)
     seconds = int(seconds_text)
@@ -52,7 +53,8 @@ def is_transcript_eligible(record: dict[str, Any]) -> bool:
     duration_text = str(record.get("duration", "00:00:00"))
     duration_seconds = parse_duration_to_seconds(duration_text)
 
-    is_eligible = duration_seconds >= MINIMUM_TRANSCRIPT_DURATION_SECONDS
+    minimum_duration = MINIMUM_TRANSCRIPT_DURATION_SECONDS
+    is_eligible = duration_seconds >= minimum_duration
 
     return is_eligible
 
@@ -75,19 +77,8 @@ def detect_transcript_data(video_url: str) -> dict[str, Any]:
     """
     ydl_opts = {"skip_download": True, "quiet": True, "no_warnings": True}
 
-    try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(video_url, download=False)
-    except DownloadError as exc:
-        transcript_data = {
-            "transcript_available": False,
-            "transcript_track_count": 0,
-            "transcript_languages": [],
-            "transcript_urls": [],
-            "transcript_error": str(exc),
-        }
-
-        return transcript_data
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(video_url, download=False)
 
     tracks = get_english_transcript_tracks(info)
     languages = []
@@ -102,12 +93,13 @@ def detect_transcript_data(video_url: str) -> dict[str, Any]:
         if has_url == True:
             transcript_urls.append(url)
 
+    transcript_available = bool(tracks)
     transcript_data = {
-        "transcript_available": bool(tracks),
+        "transcript_available": transcript_available,
         "transcript_track_count": len(tracks),
         "transcript_languages": languages,
         "transcript_urls": transcript_urls,
-        "transcript_error": None,
+        "transcript_error": "",
     }
 
     return transcript_data
@@ -138,13 +130,5 @@ def detect_transcripts_for_records(records: list[dict[str, Any]]) -> list[dict[s
         enriched_record = dict(record)
         enriched_record.update(transcript_data)
         enriched_records.append(enriched_record)
-
-        has_transcript_error = bool(transcript_data["transcript_error"])
-        if has_transcript_error == True:
-            logging.warning(
-                "Transcript detection failed for %s: %s",
-                record.get("title", record["url"]),
-                transcript_data["transcript_error"],
-            )
 
     return enriched_records

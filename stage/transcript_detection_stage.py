@@ -55,9 +55,6 @@ def run_stage() -> list[dict[str, object]]:
     output_dirs = build_output_directories()
     records_path = output_dirs["pipeline_summary"] / "01_detection.json"
 
-    if not records_path.exists():
-        raise SystemExit(f"Detection input not found: {records_path}")
-
     records = _load_records(records_path)
     enriched_records = detect_transcripts_for_records(records)
     write_json(output_dirs["pipeline_summary"] / "02_transcript_detection.json", enriched_records)
