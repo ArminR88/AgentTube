@@ -1,6 +1,6 @@
 """Helpers for organizing AgentTube pipeline outputs."""
 
-from datetime import date, datetime
+from datetime import date
 import json
 from pathlib import Path
 from typing import Any
@@ -50,7 +50,6 @@ def build_output_directories(root_name: str = "output_agenttube") -> dict[str, P
         "transcripts": run_root / "transcripts",
         "transcript_summary": run_root / "transcript_summary",
         "pipeline_summary": run_root / "pipeline_summary",
-        "verification": run_root / "verification",
     }
 
     for directory in directories.values():
@@ -97,46 +96,6 @@ def write_text(path: Path, text: str) -> Path:
 
     return path
 
-
-def write_failure_artifacts(output_dirs: dict[str, Path], error_message: str) -> dict[str, Path]:
-    """
-    Write minimal output artifacts for a failed pipeline run.
-
-    Arguments:
-        output_dirs (dict[str, Path]): Output directories for the current run.
-        error_message (str): Failure reason to record.
-
-    Returns:
-        dict[str, Path]: Paths of the artifacts that were written.
-    """
-    pipeline_summary = {
-        "run_date": output_dirs["run_root"].name,
-        "output_root": str(output_dirs["run_root"]),
-        "stages": {
-            "detection": {
-                "stage": "detection",
-                "status": "failed",
-                "error": error_message,
-            },
-        },
-    }
-    verification_summary = {
-        "passed": False,
-        "generated_at": datetime.now().isoformat(),
-        "messages": [error_message],
-    }
-
-    pipeline_summary_path = write_json(output_dirs["pipeline_summary"] / "pipeline_summary.json", pipeline_summary)
-    verification_json_path = write_json(output_dirs["verification"] / "verification.json", verification_summary)
-    verification_log_path = write_text(output_dirs["verification"] / "verification.log", f"Passed: no\n{error_message}\n")
-
-    artifact_paths = {
-        "pipeline_summary": pipeline_summary_path,
-        "verification_json": verification_json_path,
-        "verification_log": verification_log_path,
-    }
-
-    return artifact_paths
 
 def build_topics_output_directories(root_name: str = "output_agenttube") -> dict[str, Path]:
     """
