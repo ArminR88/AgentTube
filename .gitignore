@@ -4,5 +4,6 @@ __pycache__/
 *.pyd
 *.json
 *.txt
+!requirements*.txt
 *.log
 *.env
