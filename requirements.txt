@@ -1,0 +1,7 @@
+requests
+python-dotenv
+yt-dlp
+tiktoken
+langchain-core
+langchain-openai
+pydantic
