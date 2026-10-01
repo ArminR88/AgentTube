@@ -16,11 +16,11 @@ from stage.news_script_generator_stage import run_stage as run_script_stage
 def run_pipeline(
     verbose=False,
     cond_run_detection_stage=True,
-    cond_run_transcript_detection_stage=False,
-    cond_run_download_stage=False,
-    cond_run_summary_stage=False,
-    cond_run_topics_stage=False,
-    cond_run_script_stage=False,
+    cond_run_transcript_detection_stage=True,
+    cond_run_download_stage=True,
+    cond_run_summary_stage=True,
+    cond_run_topics_stage=True,
+    cond_run_script_stage=True,
 ):
     """
     Run all AgentTube stages in order.

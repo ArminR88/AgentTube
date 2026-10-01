@@ -115,6 +115,37 @@ def get_english_transcript_tracks(info: dict[str, Any]) -> list[dict[str, Any]]:
     return transcript_tracks
 
 
+def choose_preferred_transcript_url(transcript_urls: list[str]) -> str | None:
+    """
+    Choose the best transcript URL from available options.
+
+    Preference rule:
+    1) English source track URLs (`lang=en`) without translation (`tlang=`).
+    2) Fallback to the first available URL.
+
+    Arguments:
+        transcript_urls (list[str]): Candidate transcript URLs.
+
+    Returns:
+        str | None: Chosen URL, or None when no URL exists.
+    """
+    has_no_urls = len(transcript_urls) == 0
+    if has_no_urls == True:
+        chosen_url = None
+        return chosen_url
+
+    for transcript_url in transcript_urls:
+        has_english_lang = "lang=en" in transcript_url
+        has_translation = "tlang=" in transcript_url
+        if has_english_lang == True and has_translation == False:
+            chosen_url = transcript_url
+            return chosen_url
+
+    chosen_url = transcript_urls[0]
+
+    return chosen_url
+
+
 def fetch_plain_text(transcript_url: str) -> str:
     """
     Fetch and flatten YouTube transcript JSON into plain text.
@@ -207,7 +238,11 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
 
     has_transcript_urls = len(transcript_urls) > 0
     if has_transcript_urls == True:
-        transcript_url = transcript_urls[0]
+        transcript_url = choose_preferred_transcript_url(transcript_urls)
+        if transcript_url is None:
+            is_downloaded = False
+            return is_downloaded
+
         plain_text = fetch_plain_text(transcript_url)
 
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -264,6 +299,7 @@ def download_transcripts_from_records(
             status_code = getattr(exc.response, "status_code", None)
             if status_code == 429:
                 logging.warning("Rate limited on %s; stopping batch", record["url"])
+                stats["failed"] += 1
                 break
             logging.warning("Transcript request failed for %s: %s", record["url"], exc)
             transcript_downloaded = False

@@ -46,6 +46,31 @@ def run_stage(
         str(output_dirs["transcripts"]),
         inter_video_delay=inter_video_delay,
     )
+    download_total = int(download_stats.get("total", 0))
+    download_failed = int(download_stats.get("failed", 0))
+    download_success = int(download_stats.get("success", 0))
+    download_processed = download_success + download_failed
+    download_unprocessed = download_total - download_processed
+    if download_unprocessed < 0:
+        download_unprocessed = 0
+
+    download_incomplete = download_failed > 0 or download_success == 0 or download_unprocessed > 0
+    if download_incomplete == True:
+        download_stats["status"] = "incomplete"
+    else:
+        download_stats["status"] = "complete"
+    download_stats["processed"] = download_processed
+    download_stats["unprocessed"] = download_unprocessed
+
     write_json(output_dirs["pipeline_summary"] / "03_download_summary.json", download_stats)
+
+    if download_incomplete == True:
+        logging_message = (
+            "Download stage incomplete; continuing pipeline with partial data "
+            f"(success={download_success}, failed={download_failed}, unprocessed={download_unprocessed})."
+        )
+        print(logging_message)
+
+    print(f"Download coverage: {download_success}/{download_total}")
 
     return download_stats
