@@ -10,7 +10,7 @@ from typing import Any
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-from helpers.output_helper import write_json, write_text
+from helpers.output_helper import get_run_date, write_json, write_text
 from helpers.transcript_summarization_helper import (
     DEFAULT_BACKOFF_SECONDS,
     DEFAULT_MAX_RETRIES,
@@ -25,7 +25,49 @@ from helpers.transcript_summarization_helper import (
 )
 
 
-SPOKEN_OPENING = "There are a few highlights based on the sources we follow today."
+SPOKEN_CLOSING = "These were today's highlights."
+
+ORDINAL_WORDS = {
+    1: "first", 2: "second", 3: "third", 4: "fourth", 5: "fifth",
+    6: "sixth", 7: "seventh", 8: "eighth", 9: "ninth", 10: "tenth",
+    11: "eleventh", 12: "twelfth", 13: "thirteenth", 14: "fourteenth",
+    15: "fifteenth", 16: "sixteenth", 17: "seventeenth", 18: "eighteenth",
+    19: "nineteenth", 20: "twentieth", 21: "twenty-first",
+    22: "twenty-second", 23: "twenty-third", 24: "twenty-fourth",
+    25: "twenty-fifth", 26: "twenty-sixth", 27: "twenty-seventh",
+    28: "twenty-eighth", 29: "twenty-ninth", 30: "thirtieth",
+    31: "thirty-first",
+}
+
+
+def build_spoken_opening() -> str:
+    """
+    Build the spoken opening sentence with today's date spelled out.
+
+    Arguments:
+        None
+
+    Returns:
+        str: Opening sentence, e.g.
+            "There are a few highlights based on the sources we follow today, the fourth of October, 2026."
+
+    Example:
+        >>> opening = build_spoken_opening()
+        >>> opening.startswith("There are a few highlights")
+        True
+    """
+    run_date = get_run_date()
+    parsed = datetime.strptime(run_date, "%Y-%m-%d")
+    day = parsed.day
+    month_name = parsed.strftime("%B")
+    year = parsed.year
+    ordinal = ORDINAL_WORDS[day]
+
+    opening = (
+        "There are a few highlights based on the sources we follow today, "
+        f"the {ordinal} of {month_name}, {year}."
+    )
+    return opening
 
 
 def build_digest_prompt() -> str:
@@ -36,18 +78,22 @@ def build_digest_prompt() -> str:
         None
 
     Returns:
-        str: Prompt instructions for a long-form perspective digest.
+        str: Complete prompt with today's date already embedded.
 
     Example:
         >>> "highlights" in build_digest_prompt()
         True
     """
+    spoken_opening = build_spoken_opening()
+
     prompt = (
         "You are writing a spoken news segment for daily audio. Write for the ear,\n"
         "as if narrating a radio story. Aim for about 2500 words.\n\n"
         "HOW TO WRITE:\n\n"
-        "1. Start with this exact sentence: \"There are a few highlights based on\n"
-        "   the sources we follow today.\"\n\n"
+        "1. Start with this exact line, on its own:\n"
+        f"   {spoken_opening}\n"
+        "   Do not modify it. Do not add anything before it. Do not add\n"
+        "   anything after it on the same line.\n\n"
         "2. Move through the topics in flowing prose. No headers, no labels, no\n"
         "   brackets, no markdown, no bullet points.\n\n"
         "3. Never end a sentence with \"according to X.\" Instead, use these forms:\n"
@@ -70,11 +116,12 @@ def build_digest_prompt() -> str:
         "   the duplicate. Before finishing, review the draft and remove any\n"
         "   sentence that repeats a point already made.\n\n"
         "8. Use \"today\" not \"this week.\"\n\n"
-        "9. Close with a short spoken summary of the through-line. Do not label\n"
-        "   it \"conclusion.\"\n\n"
+        "9. Before the closing sentence, summarize the through-line in one or two\n"
+        "   sentences. Do not label it \"conclusion.\"\n\n"
         "10. Plain text only. No JSON, no markdown, no asterisks.\n\n"
+        "11. Close with this exact sentence: \"These were today's highlights.\"\n\n"
         "Worked example:\n\n"
-        "There are a few highlights based on the sources we follow today.\n\n"
+        f"{spoken_opening}\n\n"
         "One story dominated: Donald Trump's speech to the United Nations General\n"
         "Assembly on Iran. Jeffrey Sachs called the language ghastly. Phil Giraldi\n"
         "said it violated the UN Charter. Danny Haiphong read it as a declaration\n"
@@ -86,7 +133,8 @@ def build_digest_prompt() -> str:
         "defended ourselves. We are not terrorists.\"\n\n"
         "Another highlight: American military capacity. Haiphong claims heavy\n"
         "losses. Giraldi warns of a false flag. Sachs frames the war as illegal.\n\n"
-        "Across all of it, one thread: the US is weakened and isolated."
+        "Across all of it, one thread: the US is weakened and isolated.\n\n"
+        "These were today's highlights."
     )
 
     return prompt
@@ -246,9 +294,14 @@ def generate_perspective_digest(
     if digest_text is None:
         digest_text = ""
 
-    has_expected_opening = digest_text.startswith("There are a few highlights based on the sources we follow today.")
+    spoken_opening = build_spoken_opening()
+    has_expected_opening = digest_text.startswith(spoken_opening)
     if has_expected_opening == False:
-        digest_text = SPOKEN_OPENING + "\n\n" + digest_text
+        digest_text = spoken_opening + "\n\n" + digest_text
+
+    has_expected_closing = digest_text.endswith(SPOKEN_CLOSING)
+    if has_expected_closing == False:
+        digest_text = digest_text + "\n\n" + SPOKEN_CLOSING
 
     input_tokens, output_tokens, total_tokens = extract_usage_counts(
         final_response,

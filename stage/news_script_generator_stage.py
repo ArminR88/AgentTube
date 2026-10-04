@@ -1,5 +1,6 @@
 """Stage runner for generating perspective digests from topics."""
 
+from datetime import datetime
 import os
 from pathlib import Path
 import sys
@@ -9,7 +10,11 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
+from helpers.output_helper import (
+    build_output_directories,
+    build_topics_output_directories,
+    write_json,
+)
 from helpers.shared_helper import load_json_object
 from helpers.news_script_generator_helper import (
     build_digest_stats,
@@ -103,6 +108,13 @@ def run_stage(
         tokens_used,
         cost,
     )
+
+    archival_dir = Path("output_agenttube") / "news_summary_archival"
+    run_date = datetime.now().strftime("%Y%m%d")
+    run_time = datetime.now().strftime("%H%M%S")
+    archival_filename = f"perspective_digest_{run_date}_{run_time}.txt"
+    archival_path = archival_dir / archival_filename
+    archival_path.write_text(digest_text, encoding="utf-8")
 
     # Build stats
     topics = topics_data.get("topics", [])
