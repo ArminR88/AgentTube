@@ -70,7 +70,7 @@ def build_spoken_opening() -> str:
     return opening
 
 
-def build_digest_prompt() -> str:
+def build_news_script_prompt() -> str:
     """
     Build prompt instructions for perspective digest generation.
 
@@ -81,7 +81,7 @@ def build_digest_prompt() -> str:
         str: Complete prompt with today's date already embedded.
 
     Example:
-        >>> "highlights" in build_digest_prompt()
+        >>> "highlights" in build_news_script_prompt()
         True
     """
     spoken_opening = build_spoken_opening()
@@ -140,7 +140,7 @@ def build_digest_prompt() -> str:
     return prompt
 
 
-def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
+def build_news_script_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
     """
     Build model messages from topics data.
 
@@ -151,7 +151,7 @@ def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
         tuple[list, str]: Messages list and rendered prompt text.
 
     Example:
-        >>> messages, text = build_digest_messages({"topics": []})
+        >>> messages, text = build_news_script_messages({"topics": []})
         >>> len(messages) == 2
         True
     """
@@ -209,7 +209,7 @@ def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
 
     rendered_topics = "\n\n---\n\n".join(blocks) if blocks else "No topics available."
 
-    system_text = build_digest_prompt()
+    system_text = build_news_script_prompt()
     human_text = (
         "Write today's spoken digest. Start with the exact opening sentence. "
         "Follow the style rules. ~1200-1500 words. Return only the script text.\n"
@@ -226,7 +226,7 @@ def build_digest_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
     return messages, prompt_text
 
 
-def generate_perspective_digest(
+def generate_news_script(
     topics_data: dict[str, Any],
     api_key: str,
     model: str = DEFAULT_MODEL,
@@ -253,7 +253,7 @@ def generate_perspective_digest(
         tuple[str, int, float]: Digest text, tokens used, and estimated cost.
 
     Example:
-        >>> text, tokens, cost = generate_perspective_digest({"topics": []}, api_key="demo")
+        >>> text, tokens, cost = generate_news_script({"topics": []}, api_key="demo")
         >>> text.startswith("No topics")
         True
     """
@@ -264,7 +264,7 @@ def generate_perspective_digest(
 
         return empty_result
 
-    messages, prompt_text = build_digest_messages(topics_data)
+    messages, prompt_text = build_news_script_messages(topics_data)
     encoding = build_encoding(model)
     fallback_input_tokens = count_tokens(encoding, prompt_text)
 
@@ -326,7 +326,7 @@ def generate_perspective_digest(
     return result
 
 
-def write_perspective_digest(
+def write_news_script(
     digest_text: str,
     output_dir: str | Path,
     topics_data: dict[str, Any],
@@ -347,14 +347,14 @@ def write_perspective_digest(
         tuple[Path, Path]: Text file path and JSON file path.
 
     Example:
-        >>> text_path, json_path = write_perspective_digest("x", "tmp/news_script", {"topics": []})
+        >>> text_path, json_path = write_news_script("x", "tmp/news_script", {"topics": []})
         >>> text_path.name
-        'perspective_digest.txt'
+        'news_script.txt'
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
 
-    text_path = output_path / "perspective_digest.txt"
+    text_path = output_path / "news_script.txt"
     write_text(text_path, digest_text)
 
     topics = topics_data.get("topics")
@@ -393,7 +393,7 @@ def write_perspective_digest(
         "topics": topics,
     }
 
-    json_path = output_path / "perspective_digest.json"
+    json_path = output_path / "news_script.json"
     write_json(json_path, json_payload)
 
     result = (text_path, json_path)
@@ -401,7 +401,7 @@ def write_perspective_digest(
     return result
 
 
-def build_digest_stats(
+def build_news_script_stats(
     topic_count: int,
     perspective_count: int,
     word_count: int,
@@ -422,12 +422,12 @@ def build_digest_stats(
         dict[str, Any]: Stage statistics payload.
 
     Example:
-        >>> stats = build_digest_stats(8, 40, 4500, 5000, 0.02)
+        >>> stats = build_news_script_stats(8, 40, 4500, 5000, 0.02)
         >>> stats["stage"]
-        'perspective_digest_generation'
+        'news_script_generation'
     """
     stats = {
-        "stage": "perspective_digest_generation",
+        "stage": "news_script_generation",
         "topic_count": topic_count,
         "perspective_count": perspective_count,
         "word_count": word_count,

@@ -17,9 +17,9 @@ from helpers.output_helper import (
 )
 from helpers.shared_helper import load_json_object
 from helpers.news_script_generator_helper import (
-    build_digest_stats,
-    generate_perspective_digest,
-    write_perspective_digest,
+    build_news_script_stats,
+    generate_news_script,
+    write_news_script,
 )
 
 
@@ -61,8 +61,8 @@ def run_stage(
     try:
         topics_data = load_json_object(topics_file, missing_label="Topics file")
     except FileNotFoundError as exc:
-        stats = build_digest_stats(0, 0, 0, 0, 0.0)
-        write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
+        stats = build_news_script_stats(0, 0, 0, 0, 0.0)
+        write_json(output_dirs["pipeline_summary"] / "06_news_script_generation.json", stats)
         return {
             "digest": "",
             "word_count": 0,
@@ -75,8 +75,8 @@ def run_stage(
         }
 
     if not topics_data.get("topics"):
-        stats = build_digest_stats(0, 0, 0, 0, 0.0)
-        write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
+        stats = build_news_script_stats(0, 0, 0, 0, 0.0)
+        write_json(output_dirs["pipeline_summary"] / "06_news_script_generation.json", stats)
         return {
             "digest": "No topics available to generate digest.",
             "word_count": 0,
@@ -89,7 +89,7 @@ def run_stage(
         }
 
     # Generate digest
-    digest_text, tokens_used, cost = generate_perspective_digest(
+    digest_text, tokens_used, cost = generate_news_script(
         topics_data,
         api_key=api_key,
         model=model,
@@ -101,7 +101,7 @@ def run_stage(
     )
 
     # Write digest files
-    text_path, json_path = write_perspective_digest(
+    text_path, json_path = write_news_script(
         digest_text,
         claims_dirs["news_script"],
         topics_data,
@@ -112,7 +112,7 @@ def run_stage(
     archival_dir = Path("output_agenttube") / "news_summary_archival"
     run_date = datetime.now().strftime("%Y%m%d")
     run_time = datetime.now().strftime("%H%M%S")
-    archival_filename = f"perspective_digest_{run_date}_{run_time}.txt"
+    archival_filename = f"news_script_{run_date}_{run_time}.txt"
     archival_path = archival_dir / archival_filename
     archival_path.write_text(digest_text, encoding="utf-8")
 
@@ -125,8 +125,8 @@ def run_stage(
         if isinstance(topic, dict)
     )
     word_count = len(digest_text.split())
-    stats = build_digest_stats(topic_count, perspective_count, word_count, tokens_used, cost)
-    write_json(output_dirs["pipeline_summary"] / "06_perspective_digest_generation.json", stats)
+    stats = build_news_script_stats(topic_count, perspective_count, word_count, tokens_used, cost)
+    write_json(output_dirs["pipeline_summary"] / "06_news_script_generation.json", stats)
 
     return {
         "digest": digest_text,
