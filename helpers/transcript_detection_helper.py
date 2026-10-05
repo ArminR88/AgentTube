@@ -6,7 +6,7 @@ import yt_dlp
 
 from helpers.downloading_transcript_helper import get_english_transcript_tracks
 
-MINIMUM_TRANSCRIPT_DURATION_SECONDS = 15 * 60
+MINIMUM_TRANSCRIPT_DURATION_SECONDS = 18 * 60
 
 
 def parse_duration_to_seconds(duration_text: str) -> int:

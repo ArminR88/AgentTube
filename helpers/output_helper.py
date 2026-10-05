@@ -124,3 +124,25 @@ def build_topics_output_directories(root_name: str = "output_agenttube") -> dict
         directory.mkdir(parents=True, exist_ok=True)
 
     return directories
+
+
+def build_monitoring_directory(root_name: str = "output_agenttube") -> Path:
+    """
+    Build the monitoring directory for the current run.
+
+    Arguments:
+        root_name (str): Top-level output folder name.
+
+    Returns:
+        Path: The monitoring directory, created if missing.
+
+    Example:
+        >>> path = build_monitoring_directory()
+        >>> path.name
+        'monitoring'
+    """
+    run_date = get_run_date()
+    monitoring_dir = Path(root_name) / run_date / "monitoring"
+    monitoring_dir.mkdir(parents=True, exist_ok=True)
+
+    return monitoring_dir
