@@ -52,7 +52,7 @@ def run_stage(
     """
     output_dirs = build_output_directories()
     claims_dirs = build_topics_output_directories()
-    topics_file = claims_dirs["topics"] / "topics.json"
+    topics_file = claims_dirs["summary_of_summaries"] / "summary_of_summaries.json"
     api_key = os.environ.get("DEEPSEEK_API_KEY")
     if not api_key:
         raise SystemExit("DEEPSEEK_API_KEY is not set.")

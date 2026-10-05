@@ -499,7 +499,7 @@ def write_topics(
     cost: float = 0.0,
 ) -> Path:
     """
-    Write extracted topics to topics.json.
+    Write extracted topics to summary_of_summaries.json.
 
     Arguments:
         topics_draft (TopicsDraft): Parsed topics draft.
@@ -508,12 +508,12 @@ def write_topics(
         cost (float): Estimated extraction cost.
 
     Returns:
-        Path: Path to written topics.json.
+        Path: Path to written summary_of_summaries.json.
 
     Example:
         >>> path = write_topics(TopicsDraft(topics=[]), "tmp/topics")
         >>> path.name
-        'topics.json'
+        'summary_of_summaries.json'
     """
     output_path = Path(output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -544,7 +544,7 @@ def write_topics(
         },
     }
 
-    topics_path = output_path / "topics.json"
+    topics_path = output_path / "summary_of_summaries.json"
     write_json(topics_path, payload)
 
     return topics_path

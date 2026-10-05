@@ -109,14 +109,14 @@ def build_topics_output_directories(root_name: str = "output_agenttube") -> dict
 
     Example:
         >>> dirs = build_topics_output_directories()
-        >>> "topics" in dirs
+        >>> "summary_of_summaries" in dirs
         True
     """
     run_date = get_run_date()
     run_root = Path(root_name) / run_date
 
     directories = {
-        "topics": run_root / "topics",
+        "summary_of_summaries": run_root / "summary_of_summaries",
         "news_script": run_root / "news_script",
     }
 

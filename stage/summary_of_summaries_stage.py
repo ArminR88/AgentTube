@@ -94,7 +94,7 @@ def run_stage(
     )
 
     # Persist extracted topics for downstream stages.
-    topics_path = write_topics(topics_draft, claims_dirs["topics"], tokens_used, cost)
+    topics_path = write_topics(topics_draft, claims_dirs["summary_of_summaries"], tokens_used, cost)
 
     summary_record_count = len(summary_records)
     stats = build_topics_stats(summary_record_count, topics_draft)
