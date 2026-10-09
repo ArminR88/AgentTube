@@ -1,7 +1,9 @@
 import csv
 import json
+from datetime import datetime
 from pathlib import Path
 import sys
+from zoneinfo import ZoneInfo
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
@@ -84,6 +86,9 @@ def run_stage() -> None:
         video_id = get_video_id(record["url"])
         title = record.get("title", "")
         length = record.get("duration", "00:00:00")
+        published_at_utc = record.get("published_at", "")
+        published_at_dt = datetime.fromisoformat(published_at_utc.replace("Z", "+00:00"))
+        published_at_local = published_at_dt.astimezone(ZoneInfo("Europe/Berlin")).strftime("%Y-%m-%d %H:%M")
 
         parts = length.split(":")
         hours = int(parts[0])
@@ -112,6 +117,7 @@ def run_stage() -> None:
             "video_id": video_id,
             "title": title,
             "length": length,
+            "published_at_local": published_at_local,
             "flag_length_accepted": flag_length_accepted,
             "flag_transcript_available": flag_transcript_available,
             "flag_transcript_downloaded": flag_transcript_downloaded,
@@ -121,7 +127,7 @@ def run_stage() -> None:
 
     write_csv(
         monitoring_dir / "01_detection.csv",
-        ["channel_name", "video_id", "title", "length"],
+        ["channel_name", "video_id", "title", "length", "published_at_local"],
         rows,
     )
     write_csv(
@@ -151,6 +157,7 @@ def run_stage() -> None:
             "video_id",
             "title",
             "length",
+            "published_at_local",
             "flag_length_accepted",
             "flag_transcript_available",
             "flag_transcript_downloaded",

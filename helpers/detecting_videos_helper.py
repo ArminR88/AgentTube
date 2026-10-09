@@ -28,6 +28,7 @@ CHANNEL_IDS = [
     "UCTWBp-39z6tvz4-LQB-Z_QA",  # Mario_Nawfal
     "UCEATT6H3U5lu20eKPuHVN8A",  # Chris_Hedges
     "UCewRbK22LRnNi6N3EcGjbow",  # Transition_Protocol
+    "UCkF-6h_Zgf9zXNUmUB-MzTw",  # Dialogue_Works
 ]
 
 CHANNEL_NAMES = {
@@ -38,10 +39,11 @@ CHANNEL_NAMES = {
     "UCTWBp-39z6tvz4-LQB-Z_QA": "Mario_Nawfal",
     "UCEATT6H3U5lu20eKPuHVN8A": "Chris_Hedges",
     "UCewRbK22LRnNi6N3EcGjbow": "Transition_Protocol",
+    "UCkF-6h_Zgf9zXNUmUB-MzTw": "Dialogue_Works_Nima",
 }
 
 CHANNEL_TITLE_FILTERS = {
-    "UCTWBp-39z6tvz4-LQB-Z_QA": ["parsi", "johnson", "pape", "mearsheimer", "wilkerson", "escobar", "diesen"],
+    "UCTWBp-39z6tvz4-LQB-Z_QA": ["parsi", "johnson", "pape", "mearsheimer", "wilkerson", "escobar", "diesen", "hudson"],
 }
 
 
