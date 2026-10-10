@@ -16,13 +16,13 @@ from stage.monitoring_stage import run_stage as run_monitoring_stage
 
 def run_pipeline(
     verbose=False,
-    cond_run_detection_stage=False,
-    cond_run_transcript_detection_stage=False,
-    cond_run_download_stage=False,
-    cond_run_summary_stage=False,
-    cond_run_summary_of_summaries_stage=False,
+    cond_run_detection_stage=True,
+    cond_run_transcript_detection_stage=True,
+    cond_run_download_stage=True,
+    cond_run_summary_stage=True,
+    cond_run_summary_of_summaries_stage=True,
     cond_run_news_script_generator_stage=True,
-    cond_run_monitoring_stage=False,
+    cond_run_monitoring_stage=True,
 ):
     """
     Run all AgentTube stages in order.
