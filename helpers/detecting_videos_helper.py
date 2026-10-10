@@ -360,6 +360,62 @@ def duration_is_acceptable(duration_text: str) -> bool:
     return is_acceptable
 
 
+def print_detection_summary(results: dict[str, dict[str, Any]]) -> None:
+    """
+    Print a per-channel summary of detection results.
+
+    Arguments:
+        results (dict[str, dict[str, Any]]): Results from detect_recent_videos().
+
+    Returns:
+        None
+
+    Example:
+        >>> print_detection_summary({})
+        ------------------------------------------------------------
+        ################# Stage 1: Video Detection #################
+        ------------------------------------------------------------
+        Channel                       | Detected | Of Interest
+        ------------------------------------------------------------
+        ------------------------------------------------------------
+    """
+    print("-" * 60)
+    print("################# Stage 1: Video Detection #################")
+    print("-" * 60)
+    print(f"{'Channel':<30} | {'Detected':>8} | {'Of Interest':>11}")
+    print("-" * 60)
+
+    total_detected = 0
+    total_of_interest = 0
+
+    for channel_id, data in results.items():
+        channel_name = data["name"]
+        videos = data["videos"]
+
+        detected_count = len(videos)
+
+        channel_filter = CHANNEL_TITLE_FILTERS.get(channel_id)
+        of_interest_count = 0
+        for video in videos:
+            if channel_filter is not None:
+                if title_matches_filter(video["title"], channel_filter) == False:
+                    continue
+
+            if duration_is_acceptable(video.get("duration", "00:00:00")) == False:
+                continue
+
+            of_interest_count += 1
+
+        total_detected += detected_count
+        total_of_interest += of_interest_count
+
+        print(f"{channel_name:<30} | {detected_count:>8} | {of_interest_count:>11}")
+
+    print("-" * 60)
+    print(f"{'Total':<30} | {total_detected:>8} | {total_of_interest:>11}")
+    print("-" * 60)
+
+
 def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Flatten detection results into downstream records.

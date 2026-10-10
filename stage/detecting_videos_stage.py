@@ -12,6 +12,7 @@ from helpers.detecting_videos_helper import (  # noqa: E402
     build_detection_records,
     detect_recent_videos,
     get_api_key,
+    print_detection_summary,
 )
 from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 
@@ -46,6 +47,7 @@ def run_stage() -> list[dict[str, object]]:
         raise SystemExit("YOUTUBE_API_KEY is not set.")
 
     results = detect_recent_videos(api_key)
+    print_detection_summary(results)
     records = build_detection_records(results)
 
     output_dirs = build_output_directories()
