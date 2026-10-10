@@ -226,6 +226,94 @@ def build_news_script_messages(topics_data: dict[str, Any]) -> tuple[list, str]:
     return messages, prompt_text
 
 
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "5.2s" or "1m 30.2s".
+
+    Example:
+        >>> format_elapsed_seconds(5.2)
+        '5.2s'
+        >>> format_elapsed_seconds(90.2)
+        '1m 30.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
+
+
+def print_news_script_header() -> None:
+    """
+    Print the deterministic header of the stage 6 banner.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> print_news_script_header()
+        ------------------------------------------------------------------
+        ################ Stage 6: News Script Generation ################
+        ------------------------------------------------------------------
+    """
+    print("-" * 66)
+    print("################ Stage 6: News Script Generation ################")
+    print("-" * 66)
+
+
+def print_news_script_body(
+    topics_data: dict[str, Any],
+    word_count: int,
+    tokens_used: int,
+    cost: float,
+) -> None:
+    """
+    Print the metrics of stage 6 (news script generation).
+
+    Arguments:
+        topics_data (dict[str, Any]): Topics payload used for generation.
+        word_count (int): Word count of the generated script.
+        tokens_used (int): Total tokens used.
+        cost (float): Estimated cost.
+
+    Returns:
+        None
+
+    Example:
+        >>> print_news_script_body({"topics": []}, 0, 0, 0.0)
+        ------------------------------------------------------------------
+        Topics:              0
+        Perspectives:        0
+        Word count:          0
+        Tokens:              0
+        Cost:                $0.0000
+        ------------------------------------------------------------------
+    """
+    topics = topics_data.get("topics", [])
+    topic_count = len(topics)
+    perspective_count = 0
+    for topic in topics:
+        if isinstance(topic, dict):
+            perspective_count += len(topic.get("perspectives", []))
+
+    print(f"Topics:              {topic_count}")
+    print(f"Perspectives:        {perspective_count}")
+    print(f"Word count:          {word_count}")
+    print(f"Tokens:              {tokens_used:,}")
+    print(f"Cost:                ${cost:.4f}")
+    print("-" * 66)
+
+
 def generate_news_script(
     topics_data: dict[str, Any],
     api_key: str,
@@ -311,7 +399,7 @@ def generate_news_script(
     )
     cost = compute_cost(input_tokens, output_tokens)
 
-    logging.info(
+    logging.debug(
         "Perspective digest cost: $%.6f (input=%s, output=%s, total=%s, model=%s, words=%s)",
         cost,
         input_tokens,

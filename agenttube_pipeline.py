@@ -10,7 +10,7 @@ from stage.transcript_detection_stage import run_stage as run_transcript_detecti
 from stage.downloading_transcript_stage import run_stage as run_download_stage
 from stage.transcript_summarization_stage import run_stage as run_summary_stage
 from stage.summary_of_summaries_stage import run_stage as run_summary_of_summaries_stage
-from stage.news_script_generator_stage import run_stage as run_script_stage
+from stage.news_script_generator_stage import run_stage as run_news_script_generator_stage
 from stage.monitoring_stage import run_stage as run_monitoring_stage
 
 
@@ -20,8 +20,8 @@ def run_pipeline(
     cond_run_transcript_detection_stage=False,
     cond_run_download_stage=False,
     cond_run_summary_stage=False,
-    cond_run_summary_of_summaries_stage=True,
-    cond_run_script_stage=False,
+    cond_run_summary_of_summaries_stage=False,
+    cond_run_news_script_generator_stage=True,
     cond_run_monitoring_stage=False,
 ):
     """
@@ -34,7 +34,7 @@ def run_pipeline(
         cond_run_download_stage (bool): Run transcript download stage when True.
         cond_run_summary_stage (bool): Run transcript summarization stage when True.
         cond_run_summary_of_summaries_stage (bool): Run summary of summaries stage when True.
-        cond_run_script_stage (bool): Run script generation stage when True.
+        cond_run_news_script_generator_stage (bool): Run news script generation stage when True.
         cond_run_monitoring_stage (bool): Run monitoring stage when True.
 
     Returns:
@@ -56,8 +56,8 @@ def run_pipeline(
         run_summary_stage()
     if cond_run_summary_of_summaries_stage == True:
         run_summary_of_summaries_stage()
-    if cond_run_script_stage == True:
-        run_script_stage()
+    if cond_run_news_script_generator_stage == True:
+        run_news_script_generator_stage()
     if cond_run_monitoring_stage == True:
         run_monitoring_stage()
 
