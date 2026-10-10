@@ -3,7 +3,9 @@
 from datetime import datetime
 from pathlib import Path
 import json
+import logging
 import sys
+import time
 from typing import Any
 
 
@@ -14,6 +16,9 @@ if str(PROJECT_ROOT) not in sys.path:
 from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 from helpers.transcript_summarization_helper import (
     build_summary_transcript_records,
+    format_elapsed_seconds,
+    print_summarization_body,
+    print_summarization_header,
     summarize_transcript_records,
     write_summary_transcript_records,
 )  # noqa: E402
@@ -35,6 +40,10 @@ def run_stage(
         >>> run_stage(summary_limit=None)
         []
     """
+    logging.info("[Stage 4] Transcript summarization started")
+    print_summarization_header()
+    start_time = time.time()
+
     output_dirs = build_output_directories()
     records_path = output_dirs["pipeline_summary"] / "02_transcript_detection.json"
 
@@ -70,5 +79,16 @@ def run_stage(
     }
     write_json(output_dirs["pipeline_summary"] / "04_transcript_summarization.json", summary_stats)
 
-    return summarized_records
+    print_summarization_body(
+        records,
+        str(output_dirs["transcripts"]),
+        str(output_dirs["transcript_summary"]),
+    )
 
+    elapsed_seconds = time.time() - start_time
+    logging.info(
+        "[Stage 4] Transcript summarization finished (%s)",
+        format_elapsed_seconds(elapsed_seconds),
+    )
+
+    return summarized_records

@@ -49,6 +49,10 @@ def setup_logging(verbose: bool = False) -> None:
         level = logging.DEBUG
     else:
         level = logging.INFO
+
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("httpcore").setLevel(logging.WARNING)
+
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(levelname)s - %(message)s",

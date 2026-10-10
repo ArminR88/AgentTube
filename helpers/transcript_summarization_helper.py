@@ -17,6 +17,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
 
+from helpers.detecting_videos_helper import CHANNEL_NAMES
 from helpers.downloading_transcript_helper import build_transcript_filename, get_video_id
 from helpers.output_helper import write_json
 
@@ -82,6 +83,8 @@ class SummaryTranscriptRecord(BaseModel):
     title: str
     summary: str
     bullets: list[SummaryTranscriptBullet] = Field(default_factory=list)
+    tokens_used: int = 0
+    cost: float = 0.0
 
 
 OPINION_HINTS = (
@@ -835,6 +838,8 @@ def build_summary_transcript_record(record: dict[str, Any]) -> dict[str, Any]:
         title=str(record.get("title") or ""),
         summary=str(summary_result.get("summary") or ""),
         bullets=structured_bullets,
+        tokens_used=int(summary_result.get("tokens_used") or 0),
+        cost=float(summary_result.get("cost") or 0.0),
     )
 
     if hasattr(summary_transcript_record, "model_dump"):
@@ -921,6 +926,135 @@ def build_summary_transcript_records(records: list[dict[str, Any]]) -> list[dict
         summary_transcript_records.append(summary_record)
 
     return summary_transcript_records
+
+
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "5.2s" or "1m 30.2s".
+
+    Example:
+        >>> format_elapsed_seconds(5.2)
+        '5.2s'
+        >>> format_elapsed_seconds(90.2)
+        '1m 30.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
+
+
+def print_summarization_header() -> None:
+    """
+    Print the deterministic header of the stage 4 banner.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> print_summarization_header()
+        --------------------------------------------------------------------------
+        ################# Stage 4: Transcript Summaries #################
+        --------------------------------------------------------------------------
+        Channel                        | Downloaded | Summarized |     Tokens |     Cost
+        --------------------------------------------------------------------------
+    """
+    print("-" * 74)
+    print("################# Stage 4: Transcript Summaries #################")
+    print("-" * 74)
+    print(f"{'Channel':<30} | {'Downloaded':>10} | {'Summarized':>10} | {'Tokens':>10} | {'Cost':>8}")
+    print("-" * 74)
+
+
+def print_summarization_body(records: list[dict[str, Any]], transcripts_dir: str, summaries_dir: str) -> None:
+    """
+    Print the per-channel counts of summarized transcripts for stage 4.
+
+    Arguments:
+        records (list[dict[str, Any]]): Input records for stage 4 (from stage 2).
+        transcripts_dir (str): Directory containing downloaded transcript files.
+        summaries_dir (str): Directory containing summary JSON files.
+
+    Returns:
+        None
+
+    Example:
+        >>> print_summarization_body([], "transcripts", "transcript_summary")
+        --------------------------------------------------------------------------
+        Total                          |          0 |          0 |          0 | $0.0000
+        --------------------------------------------------------------------------
+    """
+    import json
+
+    channel_counts = {}
+
+    for channel_name in CHANNEL_NAMES.values():
+        channel_counts[channel_name] = {
+            "downloaded": 0,
+            "summarized": 0,
+            "tokens": 0,
+            "cost": 0.0,
+        }
+
+    for record in records:
+        channel_name = record.get("channel_name", "")
+        if channel_name not in channel_counts:
+            channel_counts[channel_name] = {
+                "downloaded": 0,
+                "summarized": 0,
+                "tokens": 0,
+                "cost": 0.0,
+            }
+
+        video_id = get_video_id(record["url"])
+
+        transcript_file = Path(transcripts_dir) / f"{channel_name}_{video_id}.txt"
+        if transcript_file.exists():
+            channel_counts[channel_name]["downloaded"] += 1
+
+        summary_file = Path(summaries_dir) / f"{channel_name}_{video_id}_summary.json"
+        if summary_file.exists():
+            with open(summary_file, "r", encoding="utf-8") as file:
+                summary_record = json.load(file)
+            bullets = summary_record.get("bullets", [])
+            if len(bullets) > 0:
+                channel_counts[channel_name]["summarized"] += 1
+                channel_counts[channel_name]["tokens"] += int(summary_record.get("tokens_used", 0))
+                channel_counts[channel_name]["cost"] += float(summary_record.get("cost", 0.0))
+
+    total_downloaded = 0
+    total_summarized = 0
+    total_tokens = 0
+    total_cost = 0.0
+
+    for channel_name, counts in channel_counts.items():
+        downloaded = counts["downloaded"]
+        summarized = counts["summarized"]
+        tokens = counts["tokens"]
+        cost = counts["cost"]
+
+        total_downloaded += downloaded
+        total_summarized += summarized
+        total_tokens += tokens
+        total_cost += cost
+
+        tokens_display = f"{tokens:,}"
+        print(f"{channel_name:<30} | {downloaded:>10} | {summarized:>10} | {tokens_display:>10} | ${cost:.4f}")
+
+    print("-" * 74)
+    print(f"{'Total':<30} | {total_downloaded:>10} | {total_summarized:>10} | {total_tokens:>10,} | ${total_cost:.4f}")
+    print("-" * 74)
 
 
 def summarize_transcript_record(
@@ -1169,7 +1303,7 @@ def summarize_transcript(
     )
     cost = compute_cost(input_tokens, output_tokens)
 
-    logging.info(
+    logging.debug(
         "DeepSeek summary cost: $%.6f (input=%s, output=%s, total=%s, model=%s, bullets=%s)",
         cost,
         input_tokens,
@@ -1191,4 +1325,3 @@ def summarize_transcript(
     )
 
     return success_result
-
