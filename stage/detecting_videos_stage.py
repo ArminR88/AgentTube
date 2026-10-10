@@ -1,7 +1,9 @@
 """Stage runner for detecting recent YouTube videos."""
 
+import logging
 from pathlib import Path
 import sys
+import time
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -11,8 +13,10 @@ if str(PROJECT_ROOT) not in sys.path:
 from helpers.detecting_videos_helper import (  # noqa: E402
     build_detection_records,
     detect_recent_videos,
+    format_elapsed_seconds,
     get_api_key,
-    print_detection_summary,
+    print_detection_body,
+    print_detection_header,
 )
 from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 
@@ -42,15 +46,25 @@ def run_stage() -> list[dict[str, object]]:
             }
         ]
     """
+    logging.info("[Stage 1] Video detection started")
+    print_detection_header()
+    start_time = time.time()
+
     api_key = get_api_key()
     if not api_key:
         raise SystemExit("YOUTUBE_API_KEY is not set.")
 
     results = detect_recent_videos(api_key)
-    print_detection_summary(results)
+    print_detection_body(results)
     records = build_detection_records(results)
 
     output_dirs = build_output_directories()
     write_json(output_dirs["pipeline_summary"] / "01_detection.json", records)
+
+    elapsed_seconds = time.time() - start_time
+    logging.info(
+        "[Stage 1] Video detection finished (%s)",
+        format_elapsed_seconds(elapsed_seconds),
+    )
 
     return records

@@ -159,7 +159,7 @@ def fetch_channel_videos(
         is_live_or_upcoming = live_status != "none"
         # Skip live/upcoming streams; only process regular uploaded videos.
         if is_live_or_upcoming == True:
-            logging.info(
+            logging.debug(
                 "Skipping %s broadcast for channel %s: %s",
                 live_status,
                 channel_id,
@@ -292,7 +292,7 @@ def detect_recent_videos(api_key: str) -> dict[str, dict[str, Any]]:
 
     for channel_id in CHANNEL_IDS:
         channel_name = get_channel_name(channel_id)
-        logging.info("Checking channel: %s", channel_name)
+        logging.debug("Checking channel: %s", channel_name)
         try:
             videos = fetch_channel_videos(channel_id, published_after, published_before, api_key)
         except RequestException as exc:
@@ -360,9 +360,63 @@ def duration_is_acceptable(duration_text: str) -> bool:
     return is_acceptable
 
 
-def print_detection_summary(results: dict[str, dict[str, Any]]) -> None:
+def format_time_window_label() -> str:
     """
-    Print a per-channel summary of detection results.
+    Build a compact local-time label for the current detection window.
+
+    Arguments:
+        None
+
+    Returns:
+        str: Human-readable window label, e.g.
+            "2026-10-09 17:00 to 2026-10-10 17:00".
+
+    Example:
+        >>> label = format_time_window_label()
+        >>> " to " in label
+        True
+    """
+    now = datetime.now(LOCAL_TIMEZONE)
+    end = now.replace(hour=START_HOUR, minute=0, second=0, microsecond=0)
+    start = end - timedelta(days=1)
+    end = start + timedelta(days=1)
+    start_label = start.strftime("%Y-%m-%d %H:%M")
+    end_label = end.strftime("%Y-%m-%d %H:%M")
+    label = f"{start_label} to {end_label}"
+
+    return label
+
+
+def print_detection_header() -> None:
+    """
+    Print the deterministic header of the stage 1 banner.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> print_detection_header()
+        ------------------------------------------------------------
+        ################# Stage 1: Video Detection #################
+        ------------------------------------------------------------
+        Time window: 2026-10-09 17:00 to 2026-10-10 17:00
+        Channel                       | Detected | Of Interest
+        ------------------------------------------------------------
+    """
+    print("-" * 60)
+    print("################# Stage 1: Video Detection #################")
+    print("-" * 60)
+    print(f"Time window: {format_time_window_label()}")
+    print(f"{'Channel':<30} | {'Detected':>8} | {'Of Interest':>11}")
+    print("-" * 60)
+
+
+def print_detection_body(results: dict[str, dict[str, Any]]) -> None:
+    """
+    Print the per-channel counts and totals for stage 1.
 
     Arguments:
         results (dict[str, dict[str, Any]]): Results from detect_recent_videos().
@@ -371,20 +425,11 @@ def print_detection_summary(results: dict[str, dict[str, Any]]) -> None:
         None
 
     Example:
-        >>> print_detection_summary({})
+        >>> print_detection_body({})
         ------------------------------------------------------------
-        ################# Stage 1: Video Detection #################
-        ------------------------------------------------------------
-        Channel                       | Detected | Of Interest
-        ------------------------------------------------------------
+        Total                          |        0 |           0
         ------------------------------------------------------------
     """
-    print("-" * 60)
-    print("################# Stage 1: Video Detection #################")
-    print("-" * 60)
-    print(f"{'Channel':<30} | {'Detected':>8} | {'Of Interest':>11}")
-    print("-" * 60)
-
     total_detected = 0
     total_of_interest = 0
 
@@ -414,6 +459,30 @@ def print_detection_summary(results: dict[str, dict[str, Any]]) -> None:
     print("-" * 60)
     print(f"{'Total':<30} | {total_detected:>8} | {total_of_interest:>11}")
     print("-" * 60)
+
+
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "5.2s" or "1m 5.2s".
+
+    Example:
+        >>> format_elapsed_seconds(5.2)
+        '5.2s'
+        >>> format_elapsed_seconds(65.2)
+        '1m 5.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
 
 
 def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
