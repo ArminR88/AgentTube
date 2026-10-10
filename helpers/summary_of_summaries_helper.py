@@ -390,6 +390,96 @@ def parse_topics_draft(response_text: str) -> TopicsDraft:
     return topics_draft
 
 
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "5.2s" or "1m 30.2s".
+
+    Example:
+        >>> format_elapsed_seconds(5.2)
+        '5.2s'
+        >>> format_elapsed_seconds(90.2)
+        '1m 30.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
+
+
+def print_summary_of_summaries_header() -> None:
+    """
+    Print the deterministic header of the stage 5 banner.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> print_summary_of_summaries_header()
+        ------------------------------------------------------------------
+        ################# Stage 5: Summary of Summaries #################
+        ------------------------------------------------------------------
+    """
+    print("-" * 66)
+    print("################# Stage 5: Summary of Summaries #################")
+    print("-" * 66)
+
+
+def print_summary_of_summaries_body(
+    summary_record_count: int,
+    topics_draft: TopicsDraft,
+    tokens_used: int,
+    cost: float,
+) -> None:
+    """
+    Print the aggregate metrics of stage 5 (summary of summaries).
+
+    Arguments:
+        summary_record_count (int): Number of input summary records.
+        topics_draft (TopicsDraft): Extracted topics draft.
+        tokens_used (int): Total tokens used.
+        cost (float): Estimated cost.
+
+    Returns:
+        None
+
+    Example:
+        >>> print_summary_of_summaries_body(0, TopicsDraft(topics=[]), 0, 0.0)
+        ------------------------------------------------------------------
+        Input summaries:     0
+        Topics:              0
+        Perspectives:        0
+        Themes:              0
+        Tokens:              0
+        Cost:                $0.0000
+        ------------------------------------------------------------------
+    """
+    topic_count = len(topics_draft.topics)
+    perspective_count = 0
+    theme_count = 0
+    for topic in topics_draft.topics:
+        perspective_count += len(topic.perspectives)
+        theme_count += len(topic.themes)
+
+    print(f"Input summaries:     {summary_record_count}")
+    print(f"Topics:              {topic_count}")
+    print(f"Perspectives:        {perspective_count}")
+    print(f"Themes:              {theme_count}")
+    print(f"Tokens:              {tokens_used:,}")
+    print(f"Cost:                ${cost:.4f}")
+    print("-" * 66)
+
+
 def extract_topics(
     summary_records: list[dict[str, Any]],
     api_key: str,

@@ -1,9 +1,11 @@
 """Stage runner for extracting topics across videos."""
 
 from datetime import datetime
+import logging
 import os
 from pathlib import Path
 import sys
+import time
 from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -12,8 +14,12 @@ if str(PROJECT_ROOT) not in sys.path:
 
 from helpers.output_helper import build_output_directories, build_topics_output_directories, write_json
 from helpers.summary_of_summaries_helper import (
+    TopicsDraft,
     extract_topics,
+    format_elapsed_seconds,
     load_summary_files,
+    print_summary_of_summaries_body,
+    print_summary_of_summaries_header,
     write_topics,
     build_topics_stats,
 )
@@ -46,16 +52,20 @@ def run_stage(
         >>> "topics" in result
         True
     """
-    # Load summary inputs produced by the previous stage.
+    logging.info("[Stage 5] Summary of summaries started")
+    print_summary_of_summaries_header()
+    start_time = time.time()
+
     output_dirs = build_output_directories()
     claims_dirs = build_topics_output_directories()
     summary_records = load_summary_files(output_dirs["transcript_summary"])
 
     has_no_summary_records = not summary_records
     if has_no_summary_records == True:
+        print_summary_of_summaries_body(0, TopicsDraft(topics=[]), 0, 0.0)
         empty_stats = {
-            "stage": "topic_extraction",
-            "summary_record_count": 0,
+        "stage": "topic_extraction",
+        "summary_record_count": 0,
             "topic_count": 0,
             "perspective_count": 0,
             "theme_count": 0,
@@ -74,6 +84,11 @@ def run_stage(
             "summary_record_count": 0,
             "error": "No summary files found",
         }
+        elapsed_seconds = time.time() - start_time
+        logging.info(
+            "[Stage 5] Summary of summaries finished (%s)",
+            format_elapsed_seconds(elapsed_seconds),
+        )
 
         return empty_result
 
@@ -81,7 +96,6 @@ def run_stage(
     if not api_key:
         raise SystemExit("DEEPSEEK_API_KEY is not set.")
 
-    # Extract topics from the summary corpus.
     topics_draft, tokens_used, cost = extract_topics(
         summary_records,
         api_key=api_key,
@@ -93,14 +107,14 @@ def run_stage(
         backoff_seconds=backoff_seconds,
     )
 
-    # Persist extracted topics for downstream stages.
     topics_path = write_topics(topics_draft, claims_dirs["summary_of_summaries"], tokens_used, cost)
 
     summary_record_count = len(summary_records)
     stats = build_topics_stats(summary_record_count, topics_draft)
     write_json(output_dirs["pipeline_summary"] / "05_topic_extraction.json", stats)
 
-    # Build API-safe topic payloads and accumulate perspective totals in one pass.
+    print_summary_of_summaries_body(summary_record_count, topics_draft, tokens_used, cost)
+
     topics_payload = []
     perspective_count = 0
     for topic in topics_draft.topics:
@@ -114,6 +128,12 @@ def run_stage(
 
         perspective_total_for_topic = len(topic.perspectives)
         perspective_count += perspective_total_for_topic
+
+    elapsed_seconds = time.time() - start_time
+    logging.info(
+        "[Stage 5] Summary of summaries finished (%s)",
+        format_elapsed_seconds(elapsed_seconds),
+    )
 
     result = {
         "topics": topics_payload,
