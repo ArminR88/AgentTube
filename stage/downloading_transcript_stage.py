@@ -5,15 +5,22 @@ for each video using the shared downloader helper.
 """
 
 import json
+import logging
 from pathlib import Path
 import sys
+import time
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from helpers.downloading_transcript_helper import download_transcripts_from_records  # noqa: E402
+from helpers.downloading_transcript_helper import (  # noqa: E402
+    download_transcripts_from_records,
+    format_elapsed_seconds,
+    print_transcript_download_body,
+    print_transcript_download_header,
+)
 from helpers.output_helper import build_output_directories, write_json  # noqa: E402
 
 
@@ -35,6 +42,10 @@ def run_stage(
         >>> isinstance(stats, dict)
         True
     """
+    logging.info("[Stage 3] Transcript download started")
+    print_transcript_download_header()
+    start_time = time.time()
+
     output_dirs = build_output_directories()
     records_path = output_dirs["pipeline_summary"] / "02_transcript_detection.json"
 
@@ -61,16 +72,15 @@ def run_stage(
         download_stats["status"] = "complete"
     download_stats["processed"] = download_processed
     download_stats["unprocessed"] = download_unprocessed
-
+    write_json(output_dirs["pipeline_summary"] / "03_download_summary.json", download_stats)
     write_json(output_dirs["pipeline_summary"] / "03_download_summary.json", download_stats)
 
-    if download_incomplete == True:
-        logging_message = (
-            "Download stage incomplete; continuing pipeline with partial data "
-            f"(success={download_success}, failed={download_failed}, unprocessed={download_unprocessed})."
-        )
-        print(logging_message)
+    print_transcript_download_body(records, str(output_dirs["transcripts"]))
 
-    print(f"Download coverage: {download_success}/{download_total}")
+    elapsed_seconds = time.time() - start_time
+    logging.info(
+        "[Stage 3] Transcript download finished (%s)",
+        format_elapsed_seconds(elapsed_seconds),
+    )
 
     return download_stats

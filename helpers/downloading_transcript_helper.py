@@ -6,9 +6,10 @@ import time
 from pathlib import Path
 from typing import Any
 
-from requests import HTTPError
+from requests import RequestException
 import yt_dlp
 
+from helpers.detecting_videos_helper import CHANNEL_NAMES
 from helpers.shared_helper import dev_request_json
 
 TIMEOUT = 30
@@ -191,7 +192,7 @@ def download_transcript(video_url: str, output_dir: str = "transcripts", channel
     transcript_tracks = get_english_transcript_tracks(info)
     has_no_transcript_tracks = len(transcript_tracks) == 0
     if has_no_transcript_tracks == True:
-        logging.warning("No English transcript available for %s", video_url)
+        logging.debug("No English transcript available for %s", video_url)
         is_downloaded = False
         return is_downloaded
 
@@ -205,7 +206,7 @@ def download_transcript(video_url: str, output_dir: str = "transcripts", channel
     with open(output_file, "w", encoding="utf-8") as file:
         file.write(plain_text)
 
-    logging.info("Downloaded: %s (%s chars)", output_file.name, len(plain_text))
+    logging.debug("Downloaded: %s (%s chars)", output_file.name, len(plain_text))
     is_downloaded = True
     return is_downloaded
 
@@ -227,7 +228,7 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
     """
     transcript_is_available = bool(record.get("transcript_available", True))
     if transcript_is_available == False:
-        logging.warning("Skipping video without transcript: %s", record.get("title", record["url"]))
+        logging.debug("Skipping video without transcript: %s", record.get("title", record["url"]))
         is_downloaded = False
         return is_downloaded
 
@@ -252,12 +253,114 @@ def download_transcript_from_record(record: dict[str, Any], output_dir: str = "t
         with open(output_file, "w", encoding="utf-8") as file:
             file.write(plain_text)
 
-        logging.info("Downloaded: %s (%s chars)", output_file.name, len(plain_text))
+        logging.debug("Downloaded: %s (%s chars)", output_file.name, len(plain_text))
         is_downloaded = True
     else:
         is_downloaded = download_transcript(record["url"], output_dir, channel_name=record.get("channel_name"))
 
     return is_downloaded
+
+
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "4.2s" or "1m 5.2s".
+
+    Example:
+        >>> format_elapsed_seconds(4.2)
+        '4.2s'
+        >>> format_elapsed_seconds(65.2)
+        '1m 5.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
+
+
+def print_transcript_download_header() -> None:
+    """
+    Print the deterministic header of the stage 3 banner.
+
+    Arguments:
+        None
+
+    Returns:
+        None
+
+    Example:
+        >>> print_transcript_download_header()
+        ------------------------------------------------------------------
+        ################# Stage 3: Transcript Download #################
+        ------------------------------------------------------------------
+        Channel                        | With Transcript |     Downloaded
+        ------------------------------------------------------------------
+    """
+    print("-" * 66)
+    print("################# Stage 3: Transcript Download #################")
+    print("-" * 66)
+    print(f"{'Channel':<30} | {'With Transcript':>15} | {'Downloaded':>14}")
+    print("-" * 66)
+
+
+def print_transcript_download_body(records: list[dict[str, Any]], transcripts_dir: str) -> None:
+    """
+    Print the per-channel counts of transcript downloads for stage 3.
+
+    Arguments:
+        records (list[dict[str, Any]]): Input records for stage 3 (from stage 2).
+        transcripts_dir (str): Directory containing downloaded transcript files.
+
+    Returns:
+        None
+
+    Example:
+        >>> print_transcript_download_body([], "transcripts")
+        ------------------------------------------------------------------
+        Total                          |               0 |              0
+        ------------------------------------------------------------------
+    """
+    channel_counts = {}
+
+    for channel_name in CHANNEL_NAMES.values():
+        channel_counts[channel_name] = {"with_transcript": 0, "downloaded": 0}
+
+    for record in records:
+        transcript_available = record.get("transcript_available", False)
+        if transcript_available == False:
+            continue
+
+        channel_name = record.get("channel_name", "")
+        if channel_name not in channel_counts:
+            channel_counts[channel_name] = {"with_transcript": 0, "downloaded": 0}
+
+        channel_counts[channel_name]["with_transcript"] += 1
+
+        video_id = get_video_id(record["url"])
+        transcript_file = Path(transcripts_dir) / f"{channel_name}_{video_id}.txt"
+        if transcript_file.exists():
+            channel_counts[channel_name]["downloaded"] += 1
+
+    total_with_transcript = 0
+    total_downloaded = 0
+
+    for channel_name, counts in channel_counts.items():
+        with_transcript_count = counts["with_transcript"]
+        downloaded_count = counts["downloaded"]
+        total_with_transcript += with_transcript_count
+        total_downloaded += downloaded_count
+        print(f"{channel_name:<30} | {with_transcript_count:>15} | {downloaded_count:>14}")
+
+    print("-" * 66)
+    print(f"{'Total':<30} | {total_with_transcript:>15} | {total_downloaded:>14}")
+    print("-" * 66)
 
 
 def download_transcripts_from_records(
@@ -292,11 +395,12 @@ def download_transcripts_from_records(
         delay = INTER_VIDEO_DELAY_SECONDS
 
     for index, record in enumerate(records, 1):
-        logging.info("Processing %s/%s: %s", index, stats["total"], record["url"])
+        logging.debug("Processing %s/%s: %s", index, stats["total"], record["url"])
         try:
             transcript_downloaded = download_transcript_from_record(record, output_dir)
-        except HTTPError as exc:
-            status_code = getattr(exc.response, "status_code", None)
+        except RequestException as exc:
+            response = getattr(exc, "response", None)
+            status_code = getattr(response, "status_code", None)
             if status_code == 429:
                 logging.warning("Rate limited on %s; stopping batch", record["url"])
                 stats["failed"] += 1
