@@ -6,59 +6,6 @@ import yt_dlp
 
 from helpers.downloading_transcript_helper import get_english_transcript_tracks
 
-MINIMUM_TRANSCRIPT_DURATION_SECONDS = 18 * 60
-
-
-def parse_duration_to_seconds(duration_text: str) -> int:
-    """
-    Convert a hh:mm:ss duration string to seconds.
-
-    Arguments:
-        duration_text (str): Duration formatted as hh:mm:ss.
-
-    Returns:
-        int: Total duration in seconds.
-
-    Example:
-        >>> parse_duration_to_seconds("01:02:03")
-        3723
-    """
-    duration_parts = duration_text.split(":")
-    hours_text = duration_parts[0]
-    minutes_text = duration_parts[1]
-    seconds_text = duration_parts[2]
-    hours = int(hours_text)
-    minutes = int(minutes_text)
-    seconds = int(seconds_text)
-
-    total_seconds = hours * 3600 + minutes * 60 + seconds
-
-    return total_seconds
-
-
-def is_transcript_eligible(record: dict[str, Any]) -> bool:
-    """
-    Check whether a detected video should be sent to transcript detection.
-
-    Arguments:
-        record (dict[str, Any]): Detection record from the video table.
-
-    Returns:
-        bool: True when the video is longer than the minimum duration.
-
-    Example:
-        >>> is_transcript_eligible({"duration": "00:20:00"})
-        True
-    """
-    duration_text = str(record.get("duration", "00:00:00"))
-    duration_seconds = parse_duration_to_seconds(duration_text)
-
-    minimum_duration = MINIMUM_TRANSCRIPT_DURATION_SECONDS
-    is_eligible = duration_seconds >= minimum_duration
-
-    return is_eligible
-
-
 def detect_transcript_data(video_url: str) -> dict[str, Any]:
     """
     Detect transcript tracks and availability for one YouTube video.
@@ -126,10 +73,6 @@ def detect_transcripts_for_records(records: list[dict[str, Any]]) -> list[dict[s
     enriched_records: list[dict[str, Any]] = []
 
     for record in records:
-        transcript_is_eligible = is_transcript_eligible(record)
-        if transcript_is_eligible == False:
-            continue
-
         transcript_data = detect_transcript_data(record["url"])
         enriched_record = dict(record)
         enriched_record.update(transcript_data)

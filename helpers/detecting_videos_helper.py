@@ -16,6 +16,7 @@ START_HOUR = 17
 LOCAL_TIMEZONE = ZoneInfo("Europe/Berlin")
 TIMEOUT_SECONDS = 30
 MAX_RESULTS = 50
+MINIMUM_TRANSCRIPT_DURATION_SECONDS = 18 * 60
 VIDEO_DURATION_PATTERN = re.compile(
     r"^P(?:(?P<days>\d+)D)?(?:T(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)S)?)?$"
 )
@@ -332,6 +333,33 @@ def title_matches_filter(title: str, keywords: list[str]) -> bool:
     return False
 
 
+def duration_is_acceptable(duration_text: str) -> bool:
+    """
+    Check whether a video duration meets the minimum threshold.
+
+    Arguments:
+        duration_text (str): Duration formatted as hh:mm:ss.
+
+    Returns:
+        bool: True when the duration is at least
+            MINIMUM_TRANSCRIPT_DURATION_SECONDS.
+
+    Example:
+        >>> duration_is_acceptable("00:20:00")
+        True
+        >>> duration_is_acceptable("00:10:00")
+        False
+    """
+    parts = duration_text.split(":")
+    hours = int(parts[0])
+    minutes = int(parts[1])
+    seconds = int(parts[2])
+    total_seconds = hours * 3600 + minutes * 60 + seconds
+    is_acceptable = total_seconds >= MINIMUM_TRANSCRIPT_DURATION_SECONDS
+
+    return is_acceptable
+
+
 def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Flatten detection results into downstream records.
@@ -360,6 +388,9 @@ def build_detection_records(results: dict[str, dict[str, Any]]) -> list[dict[str
             if channel_filter is not None:
                 if title_matches_filter(video["title"], channel_filter) == False:
                     continue
+
+            if duration_is_acceptable(video.get("duration", "00:00:00")) == False:
+                continue
 
             records.append(
                 {
