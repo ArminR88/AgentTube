@@ -146,3 +146,25 @@ def build_monitoring_directory(root_name: str = "output_agenttube") -> Path:
     monitoring_dir.mkdir(parents=True, exist_ok=True)
 
     return monitoring_dir
+
+
+def build_monitoring_banners_directory(root_name: str = "output_agenttube") -> Path:
+    """
+    Build the monitoring banners directory for the current run.
+
+    Arguments:
+        root_name (str): Top-level output folder name.
+
+    Returns:
+        Path: The banners directory, created if missing.
+
+    Example:
+        >>> path = build_monitoring_banners_directory()
+        >>> path.name
+        'banners'
+    """
+    run_date = get_run_date()
+    banners_dir = Path(root_name) / run_date / "monitoring" / "banners"
+    banners_dir.mkdir(parents=True, exist_ok=True)
+
+    return banners_dir

@@ -1,5 +1,6 @@
 """Stage runner for detecting recent YouTube videos."""
 
+import io
 import logging
 from pathlib import Path
 import sys
@@ -18,7 +19,12 @@ from helpers.detecting_videos_helper import (  # noqa: E402
     print_detection_body,
     print_detection_header,
 )
-from helpers.output_helper import build_output_directories, write_json  # noqa: E402
+from helpers.output_helper import (  # noqa: E402
+    build_monitoring_banners_directory,
+    build_output_directories,
+    write_json,
+    write_text,
+)
 
 
 def run_stage() -> list[dict[str, object]]:
@@ -47,7 +53,6 @@ def run_stage() -> list[dict[str, object]]:
         ]
     """
     logging.info("[Stage 1] Video detection started")
-    print_detection_header()
     start_time = time.time()
 
     api_key = get_api_key()
@@ -55,10 +60,35 @@ def run_stage() -> list[dict[str, object]]:
         raise SystemExit("YOUTUBE_API_KEY is not set.")
 
     results = detect_recent_videos(api_key)
-    print_detection_body(results)
-    records = build_detection_records(results)
+
+    banner_buffer = io.StringIO()
+    print_detection_header(output_stream=banner_buffer)
+    print_detection_body(results, output_stream=banner_buffer)
+    banner_text = banner_buffer.getvalue()
+
+    print(banner_text)
+    banners_dir = build_monitoring_banners_directory()
+    write_text(banners_dir / "stage_1.txt", banner_text)
 
     output_dirs = build_output_directories()
+
+    all_videos = []
+    for channel_id, data in results.items():
+        for video in data["videos"]:
+            all_videos.append({
+                "channel_id": channel_id,
+                "channel_name": data["name"],
+                "title": video["title"],
+                "duration": video.get("duration", "00:00:00"),
+                "url": video["url"],
+                "published_at": video["published_at"],
+                "description": video.get("description", ""),
+            })
+
+    write_json(output_dirs["pipeline_summary"] / "01_detection_all.json", all_videos)
+
+    records = build_detection_records(results)
+
     write_json(output_dirs["pipeline_summary"] / "01_detection.json", records)
 
     elapsed_seconds = time.time() - start_time

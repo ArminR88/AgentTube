@@ -3,6 +3,7 @@
 import logging
 import os
 import re
+import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -387,12 +388,12 @@ def format_time_window_label() -> str:
     return label
 
 
-def print_detection_header() -> None:
+def print_detection_header(output_stream=None) -> None:
     """
     Print the deterministic header of the stage 1 banner.
 
     Arguments:
-        None
+        output_stream (TextIO): Stream to which the header is written.
 
     Returns:
         None
@@ -406,20 +407,24 @@ def print_detection_header() -> None:
         Channel                       | Detected | Of Interest
         ------------------------------------------------------------
     """
-    print("-" * 60)
-    print("################# Stage 1: Video Detection #################")
-    print("-" * 60)
-    print(f"Time window: {format_time_window_label()}")
-    print(f"{'Channel':<30} | {'Detected':>8} | {'Of Interest':>11}")
-    print("-" * 60)
+    if output_stream is None:
+        output_stream = sys.stdout
+
+    print("-" * 60, file=output_stream)
+    print("################# Stage 1: Video Detection #################", file=output_stream)
+    print("-" * 60, file=output_stream)
+    print(f"Time window: {format_time_window_label()}", file=output_stream)
+    print(f"{'Channel':<30} | {'Detected':>8} | {'Of Interest':>11}", file=output_stream)
+    print("-" * 60, file=output_stream)
 
 
-def print_detection_body(results: dict[str, dict[str, Any]]) -> None:
+def print_detection_body(results: dict[str, dict[str, Any]], output_stream=None) -> None:
     """
     Print the per-channel counts and totals for stage 1.
 
     Arguments:
         results (dict[str, dict[str, Any]]): Results from detect_recent_videos().
+        output_stream (TextIO): Stream to which the body is written.
 
     Returns:
         None
@@ -430,6 +435,9 @@ def print_detection_body(results: dict[str, dict[str, Any]]) -> None:
         Total                          |        0 |           0
         ------------------------------------------------------------
     """
+    if output_stream is None:
+        output_stream = sys.stdout
+
     total_detected = 0
     total_of_interest = 0
 
@@ -454,11 +462,11 @@ def print_detection_body(results: dict[str, dict[str, Any]]) -> None:
         total_detected += detected_count
         total_of_interest += of_interest_count
 
-        print(f"{channel_name:<30} | {detected_count:>8} | {of_interest_count:>11}")
+        print(f"{channel_name:<30} | {detected_count:>8} | {of_interest_count:>11}", file=output_stream)
 
-    print("-" * 60)
-    print(f"{'Total':<30} | {total_detected:>8} | {total_of_interest:>11}")
-    print("-" * 60)
+    print("-" * 60, file=output_stream)
+    print(f"{'Total':<30} | {total_detected:>8} | {total_of_interest:>11}", file=output_stream)
+    print("-" * 60, file=output_stream)
 
 
 def format_elapsed_seconds(seconds: float) -> str:

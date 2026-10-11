@@ -39,18 +39,19 @@ def write_csv(path, columns, rows) -> None:
             writer.writerow({column: row[column] for column in columns})
 
 
-def print_monitoring_banner(rows: list[dict]) -> None:
+def print_monitoring_banner(all_videos: list[dict], rows: list[dict]) -> None:
     """
     Print the stage 7 monitoring banner.
 
     Arguments:
+        all_videos (list[dict]): All detected videos before filtering.
         rows (list[dict]): Per-video rows with all flags and metrics.
 
     Returns:
         None
 
     Example:
-        >>> print_monitoring_banner([])
+        >>> print_monitoring_banner([], [])
         ---------------------------------------------------------------------------------------------------------
         #################################### Stage 7: Monitoring ####################################
         ---------------------------------------------------------------------------------------------------------
@@ -76,6 +77,20 @@ def print_monitoring_banner(rows: list[dict]) -> None:
             "cost": 0.0,
         }
 
+    for video in all_videos:
+        channel_name = video["channel_name"]
+        if channel_name not in channel_counts:
+            channel_counts[channel_name] = {
+                "detected": 0,
+                "of_interest": 0,
+                "with_transcript": 0,
+                "downloaded": 0,
+                "summarized": 0,
+                "tokens": 0,
+                "cost": 0.0,
+            }
+        channel_counts[channel_name]["detected"] += 1
+
     for row in rows:
         channel_name = row["channel_name"]
         if channel_name not in channel_counts:
@@ -89,7 +104,6 @@ def print_monitoring_banner(rows: list[dict]) -> None:
                 "cost": 0.0,
             }
 
-        channel_counts[channel_name]["detected"] += 1
         if row.get("flag_length_accepted") == True:
             channel_counts[channel_name]["of_interest"] += 1
         if row.get("flag_transcript_available") == True:
@@ -206,9 +220,13 @@ def run_stage() -> None:
     topics_dirs = build_topics_output_directories()
     monitoring_dir = build_monitoring_directory()
 
+    detection_all_path = output_dirs["pipeline_summary"] / "01_detection_all.json"
     detection_path = output_dirs["pipeline_summary"] / "01_detection.json"
     transcript_detection_path = output_dirs["pipeline_summary"] / "02_transcript_detection.json"
     summary_of_summaries_path = topics_dirs["summary_of_summaries"] / "summary_of_summaries.json"
+
+    with open(detection_all_path, "r", encoding="utf-8") as file:
+        all_videos = json.load(file)
 
     with open(detection_path, "r", encoding="utf-8") as file:
         detection_records = json.load(file)
@@ -330,7 +348,7 @@ def run_stage() -> None:
     )
     print("Saved: monitoring_all.csv")
 
-    print_monitoring_banner(rows)
+    print_monitoring_banner(all_videos, rows)
 
     elapsed_seconds = time.time() - start_time
     logging.info(
