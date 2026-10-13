@@ -1,10 +1,13 @@
 """AgentTube pipeline entrypoint."""
 
+import logging
+import time
+
 from dotenv import load_dotenv
 
 load_dotenv()
 
-from helpers.shared_helper import setup_logging
+from helpers.shared_helper import format_elapsed_seconds, setup_logging
 from stage.detecting_videos_stage import run_stage as run_detection_stage
 from stage.transcript_detection_stage import run_stage as run_transcript_detection_stage
 from stage.downloading_transcript_stage import run_stage as run_download_stage
@@ -46,6 +49,8 @@ def run_pipeline(
         True
     """
     setup_logging(verbose)
+    pipeline_start_time = time.time()
+
     if cond_run_detection_stage == True:
         run_detection_stage()
     if cond_run_transcript_detection_stage == True:
@@ -60,6 +65,12 @@ def run_pipeline(
         run_news_script_generator_stage()
     if cond_run_monitoring_stage == True:
         run_monitoring_stage()
+
+    pipeline_elapsed_seconds = time.time() - pipeline_start_time
+    logging.info(
+        "[Pipeline] Total runtime (%s)",
+        format_elapsed_seconds(pipeline_elapsed_seconds),
+    )
 
 
 if __name__ == "__main__":

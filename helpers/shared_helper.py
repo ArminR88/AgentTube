@@ -88,3 +88,27 @@ def load_json_object(path: str | Path, *, missing_label: str = "JSON file") -> d
         raise ValueError(f"{missing_label} must contain a JSON object: {json_path}")
 
     return payload
+
+
+def format_elapsed_seconds(seconds: float) -> str:
+    """
+    Format an elapsed duration as seconds or minutes+seconds.
+
+    Arguments:
+        seconds (float): Elapsed time in seconds.
+
+    Returns:
+        str: Formatted duration, e.g. "5.2s" or "4m 30.2s".
+
+    Example:
+        >>> format_elapsed_seconds(5.2)
+        '5.2s'
+        >>> format_elapsed_seconds(270.2)
+        '4m 30.2s'
+    """
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+
+    minutes = int(seconds // 60)
+    remainder = seconds - minutes * 60
+    return f"{minutes}m {remainder:.1f}s"
