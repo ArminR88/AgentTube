@@ -223,6 +223,7 @@ def run_stage() -> None:
     detection_all_path = output_dirs["pipeline_summary"] / "01_detection_all.json"
     detection_path = output_dirs["pipeline_summary"] / "01_detection.json"
     transcript_detection_path = output_dirs["pipeline_summary"] / "02_transcript_detection.json"
+    downloaded_videos_path = output_dirs["pipeline_summary"] / "03_downloaded_videos.json"
     summary_of_summaries_path = topics_dirs["summary_of_summaries"] / "summary_of_summaries.json"
 
     with open(detection_all_path, "r", encoding="utf-8") as file:
@@ -234,6 +235,9 @@ def run_stage() -> None:
     with open(transcript_detection_path, "r", encoding="utf-8") as file:
         transcript_detection_records = json.load(file)
 
+    with open(downloaded_videos_path, "r", encoding="utf-8") as file:
+        downloaded_videos = json.load(file)
+
     with open(summary_of_summaries_path, "r", encoding="utf-8") as file:
         summary_of_summaries_data = json.load(file)
 
@@ -241,6 +245,11 @@ def run_stage() -> None:
     for record in transcript_detection_records:
         if record.get("transcript_available") == True:
             available_ids.add(get_video_id(record["url"]))
+
+    downloaded_ids = set()
+    for video in downloaded_videos:
+        if video.get("downloaded") == True:
+            downloaded_ids.add(get_video_id(video["url"]))
 
     used_in_topics_ids = set()
     for topic in summary_of_summaries_data.get("topics", []):
@@ -268,8 +277,7 @@ def run_stage() -> None:
 
         flag_transcript_available = video_id in available_ids
 
-        transcript_file = output_dirs["transcripts"] / f"{channel_name}_{video_id}.txt"
-        flag_transcript_downloaded = transcript_file.exists()
+        flag_transcript_downloaded = video_id in downloaded_ids
 
         summary_file = output_dirs["transcript_summary"] / f"{channel_name}_{video_id}_summary.json"
         flag_summary_generated = False

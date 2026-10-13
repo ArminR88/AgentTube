@@ -45,13 +45,15 @@ def run_stage(
     start_time = time.time()
 
     output_dirs = build_output_directories()
-    records_path = output_dirs["pipeline_summary"] / "02_transcript_detection.json"
+    records_path = output_dirs["pipeline_summary"] / "03_downloaded_videos.json"
 
     if not records_path.exists():
         raise SystemExit(f"Transcript detection input not found: {records_path}")
 
     with open(records_path, "r", encoding="utf-8") as file:
         records = json.load(file)
+
+    records = [record for record in records if record.get("downloaded") == True]
 
     summarized_records = summarize_transcript_records(
         records,

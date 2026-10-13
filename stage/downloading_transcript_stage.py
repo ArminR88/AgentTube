@@ -57,6 +57,15 @@ def run_stage(
         str(output_dirs["transcripts"]),
         inter_video_delay=inter_video_delay,
     )
+    from helpers.downloading_transcript_helper import get_video_id
+
+    for record in records:
+        video_id = get_video_id(record["url"])
+        transcript_file = output_dirs["transcripts"] / f"{record['channel_name']}_{video_id}.txt"
+        record["downloaded"] = transcript_file.exists()
+
+    write_json(output_dirs["pipeline_summary"] / "03_downloaded_videos.json", records)
+
     download_total = int(download_stats.get("total", 0))
     download_failed = int(download_stats.get("failed", 0))
     download_success = int(download_stats.get("success", 0))
